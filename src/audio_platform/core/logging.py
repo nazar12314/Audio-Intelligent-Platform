@@ -47,19 +47,27 @@ def _redact_processor(_: Any, __: str, event_dict: MutableMapping[str, Any]) -> 
 
 def configure_logging(settings: Settings) -> None:
     """Route both structlog and stdlib logging (uvicorn, sqlalchemy) through one JSON/console renderer."""
+    # Exceptions are rendered without frame locals (structlog's defaults include them, which would log
+    # DSNs and keys held in variables) and before redaction, so credentials in exception messages are masked.
+    exception_renderer: structlog.types.Processor
+    renderer: structlog.types.Processor
+    if settings.log_format == "json":
+        exception_renderer = structlog.processors.ExceptionRenderer(
+            structlog.tracebacks.ExceptionDictTransformer(show_locals=False)
+        )
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        exception_renderer = structlog.processors.format_exc_info
+        renderer = structlog.dev.ConsoleRenderer()
+
     shared: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
+        exception_renderer,
         _redact_processor,
     ]
-    renderer: structlog.types.Processor
-    if settings.log_format == "json":
-        shared.append(structlog.processors.dict_tracebacks)
-        renderer = structlog.processors.JSONRenderer()
-    else:
-        renderer = structlog.dev.ConsoleRenderer()
 
     structlog.configure(
         processors=[*shared, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
