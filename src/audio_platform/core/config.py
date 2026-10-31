@@ -40,7 +40,9 @@ class PostgresSettings(BaseModel):
 class AwsSettings(BaseModel):
     region: str = "eu-central-1"
     endpoint_url: str | None = None  # set only for local S3-compatible storage (RustFS)
-    s3_addressing_style: Literal["auto", "virtual", "path"] = "auto"
+    # "auto" presigns for the global host, which 307-redirects new buckets outside us-east-1 and breaks
+    # browser uploads; "virtual" uses the regional host. RustFS needs "path".
+    s3_addressing_style: Literal["auto", "virtual", "path"] = "virtual"
     connect_timeout_s: float = Field(default=5.0, gt=0)
     read_timeout_s: float = Field(default=30.0, gt=0)
     max_attempts: int = Field(default=3, ge=1, le=10)

@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored: this repo is public).
+account_id           = "123456789012" # your AWS account ID (12 digits)
+owner                = "your-name"
+cors_allowed_origins = ["http://localhost:5173"]

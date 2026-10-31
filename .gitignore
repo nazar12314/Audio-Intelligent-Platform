@@ -17,3 +17,17 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+# Terraform
+.terraform/
+.terraform-lint/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+# Account IDs and emails stay out of this public repo; *.tfvars.example are committed.
+*.tfvars
+!*.tfvars.example
+backend.hcl
