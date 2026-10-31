@@ -17,7 +17,9 @@ information extraction), and querying them in natural language.
   API only registers, completes and verifies uploads. See
   [ADR 0001](docs/adr/0001-stage-1-ingestion-architecture.md).
 - **Infrastructure.** PostgreSQL 18 (system of record) and S3 (audio objects). Locally, S3
-  is provided by RustFS ([ADR 0002](docs/adr/0002-local-s3-emulator-rustfs.md)).
+  is provided by RustFS ([ADR 0002](docs/adr/0002-local-s3-emulator-rustfs.md)). AWS
+  resources are managed with Terraform in [`infra/`](infra/README.md)
+  ([ADR 0003](docs/adr/0003-aws-foundation-stage-1.md)).
 - Design conventions follow [`agent-guides/`](agent-guides/AGENTS.md). Deviations are
   recorded in `docs/adr/`.
 
@@ -62,6 +64,16 @@ make up
 curl localhost:8000/health/ready
 ```
 
+### Against real S3 (dev environment on AWS)
+
+After `infra/` is applied ([infra/README.md](infra/README.md)), run the API on the host with
+local Postgres and the real recordings bucket:
+
+1. Add the profile printed by `make tf-app-env` to `~/.aws/config`.
+2. Put its `.env` lines into `.env`, leaving `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+   blank.
+3. Run `make aws-login`, `make infra-up`, then `make run`.
+
 RustFS console: http://localhost:9001 (`rustfs-dev` / `rustfs-dev-secret`). If a default
 port is taken, override `APP_HOST_PORT`, `POSTGRES_HOST_PORT`, `S3_HOST_PORT` or
 `S3_CONSOLE_HOST_PORT`.
@@ -98,6 +110,10 @@ and one line per field, when a required setting is missing or invalid.
 | `migrate` | `alembic upgrade head` against the DB in `.env` |
 | `migration m="…"` | Autogenerate `migrations/versions/NNNN_<slug>.py` |
 | `infra-up` / `up` / `down` / `logs` | Docker Compose lifecycle |
+| `aws-login` | SSO login to AWS (profile `audio-platform-dev`) |
+| `tf-bootstrap` / `tf-init` / `tf-plan` / `tf-apply` | Terraform for the dev environment ([infra/README.md](infra/README.md)) |
+| `tf-app-env` | Print app `.env` lines and AWS profile from Terraform outputs |
+| `tf-fmt` / `tf-lint` | Format / fmt check, validate, tflint, checkov |
 
 ## Testing
 
