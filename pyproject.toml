@@ -1,0 +1,132 @@
+[project]
+name = "audio-platform"
+version = "0.1.0"
+description = "Audio Intelligence Platform: audio ingestion, processing and agentic interaction backend"
+requires-python = ">=3.14,<3.15" # 3.14 for stdlib uuid.uuid7(); see docs/adr/0001
+readme = "README.md"
+dependencies = [
+    "fastapi>=0.162.0",
+    "uvicorn[standard]>=0.54.0",
+    "pydantic>=2.14.2",
+    "pydantic-settings>=2.16.2",
+    "structlog>=26.1.0",
+    # PostgreSQL: system of record for recording metadata
+    "sqlalchemy[asyncio]>=2.1.6",
+    "asyncpg>=0.32.0",
+    "alembic>=1.20.1",
+    # S3: audio object storage (multipart uploads, presigned URLs)
+    "aioboto3>=15.5.0",
+]
+
+[project.scripts]
+audio-platform-api = "audio_platform.entrypoints.api:main"
+
+[tool.poetry]
+packages = [{ include = "audio_platform", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+ruff = "0.17.3"                                   # keep in sync with .pre-commit-config.yaml and CI
+mypy = "^2.4.1"
+types-aioboto3 = { version = "^15.5.0", extras = ["s3"] }
+pytest = "^9.2.0"
+pytest-asyncio = "^1.4.1"
+pytest-cov = "^7.1.0"
+httpx = "^0.28.1"                                 # ASGI test client
+testcontainers = { version = "^4.15.0", extras = ["postgres"] }
+pre-commit = "^4.7.0"
+pip-audit = "^2.10.1"
+python-semantic-release = "^10.7.0"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+# ── Ruff ─────────────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+src = ["src", "tests"]
+extend-exclude = ["migrations", "agent-guides"] # agent-guides: vendored docs (ruff also formats code blocks in Markdown)
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "ASYNC", "S", "TID", "RUF"]
+ignore = ["B008"] # FastAPI Depends() in argument defaults
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"fastapi".msg = "transport only: keep FastAPI out of domain/services"
+"starlette".msg = "transport only: keep Starlette out of domain/services"
+"sqlalchemy".msg = "persistence only: use it in adapters/ or infrastructure/"
+"asyncpg".msg = "persistence only: use it in adapters/ or infrastructure/"
+"aioboto3".msg = "object storage only: use it in adapters/ or infrastructure/"
+"aiobotocore".msg = "object storage only: use it in adapters/ or infrastructure/"
+"botocore".msg = "object storage only: use it in adapters/ or infrastructure/"
+
+[tool.ruff.lint.per-file-ignores]
+"src/audio_platform/api/**" = ["TID251"]
+"src/audio_platform/modules/*/api/**" = ["TID251"]
+"src/audio_platform/modules/*/adapters/**" = ["TID251"]
+"src/audio_platform/infrastructure/**" = ["TID251"]
+"src/audio_platform/core/container.py" = ["TID251"]
+"src/audio_platform/entrypoints/**" = ["TID251"]
+"tests/**" = ["S101", "S105", "S106", "TID251"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["audio_platform"]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+# ── mypy ─────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.14"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["testcontainers.*"]
+ignore_missing_imports = true
+
+# ── pytest / coverage ────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+addopts = "-ra -q --tb=short --strict-markers"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs real infrastructure (Docker); run with `make test-integration`",
+]
+
+[tool.coverage.run]
+source = ["src/audio_platform"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+
+# ── Releases ─────────────────────────────────────────────────────────────────
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+tag_format = "v{version}"
+commit_message = "chore(release): {version} [skip ci]"
+allow_zero_version = true # false once 1.0.0 is cut
+
+[tool.semantic_release.branches.main]
+match = "main"
+
+[tool.semantic_release.changelog]
+mode = "update"
+insertion_flag = "<!-- version list -->"
+
+[tool.semantic_release.commit_parser_options]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+parse_squash_commits = true
