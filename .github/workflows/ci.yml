@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.14"
+  POETRY_VERSION: "2.4.1" # keep in sync with the Dockerfile and .pre-commit-config.yaml
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-poetry
+        with: { python-version: "${{ env.PYTHON_VERSION }}", poetry-version: "${{ env.POETRY_VERSION }}" }
+      - run: poetry check --lock
+      - run: poetry run ruff check .
+      - run: poetry run ruff format --check .
+      - run: poetry run mypy
+
+  test:
+    runs-on: ubuntu-latest # Docker is available for testcontainers
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-poetry
+        with: { python-version: "${{ env.PYTHON_VERSION }}", poetry-version: "${{ env.POETRY_VERSION }}" }
+      # The whole suite (unit + API + integration) under one coverage gate.
+      - run: poetry run pytest --cov --cov-report=term-missing --cov-report=xml
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          load: true
+          tags: audio-platform:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test (liveness needs no dependencies; engine and S3 client connect lazily)
+        run: |
+          docker run -d --name smoke -p 8000:8000 \
+            -e AUDIO_POSTGRES__DSN=postgresql+asyncpg://ci:ci@localhost:5432/ci \
+            -e AUDIO_STORAGE__BUCKET=ci-recordings \
+            audio-platform:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8000/health/live && exit 0; sleep 1; done
+          docker logs smoke; exit 1
+      - name: Refuses to start without required settings
+        run: |
+          set +e; docker run --rm audio-platform:ci; code=$?
+          test "$code" -eq 2
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: audio-platform:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 } # full history for the secret scan
+      - uses: ./.github/actions/setup-poetry
+        with: { python-version: "${{ env.PYTHON_VERSION }}", poetry-version: "${{ env.POETRY_VERSION }}" }
+      - name: Dependency audit
+        run: poetry run pip-audit --skip-editable
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test, build, scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency: { group: release, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, ref: "${{ github.sha }}" }
+      - run: git checkout -B ${{ github.ref_name }} ${{ github.sha }}
+      - id: release
+        uses: python-semantic-release/python-semantic-release@v10.7.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      # Image push (e.g. to ECR via OIDC) is added together with the AWS deployment.

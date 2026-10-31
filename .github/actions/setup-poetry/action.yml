@@ -1,0 +1,19 @@
+name: Set up Python + Poetry
+description: Install pinned Poetry and sync dependencies from poetry.lock, cached on the lock hash.
+inputs:
+  python-version: { required: true, description: Python version }
+  poetry-version: { required: true, description: Poetry version }
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      id: python
+      with: { python-version: "${{ inputs.python-version }}" }
+    - shell: bash
+      run: pipx install "poetry==${{ inputs.poetry-version }}" --python "${{ steps.python.outputs.python-path }}"
+    - uses: actions/cache@v6
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-py${{ steps.python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+    - shell: bash
+      run: poetry sync
