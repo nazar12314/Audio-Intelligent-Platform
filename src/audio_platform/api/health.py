@@ -1,5 +1,3 @@
-"""Liveness and readiness probes (public, unversioned)."""
-
 from typing import Literal
 
 from fastapi import APIRouter
@@ -31,13 +29,17 @@ class ReadyOut(BaseModel):
         return cls(
             status=report.status,
             checks={
-                c.name: CheckOut(status="ok" if c.ok else "fail", required=c.required, error=c.error)
+                c.name: CheckOut(
+                    status="ok" if c.ok else "fail", required=c.required, error=c.error
+                )
                 for c in report.checks
             },
         )
 
 
-@health_router.get("/live", summary="Process is up (no dependency checks)", response_model=LiveOut)
+@health_router.get(
+    "/live", summary="Process is up (no dependency checks)", response_model=LiveOut
+)
 async def live() -> LiveOut:
     return LiveOut()
 
@@ -49,6 +51,10 @@ async def live() -> LiveOut:
     responses={503: {"model": ReadyOut, "description": "A required dependency failed"}},
 )
 async def ready(container: ContainerDep) -> JSONResponse:
-    report = await run_checks(container.health_checks, container.settings.health_check_timeout_s)
+    report = await run_checks(
+        container.health_checks, container.settings.health_check_timeout_s
+    )
     status_code = 503 if report.status == "fail" else 200
-    return JSONResponse(ReadyOut.from_report(report).model_dump(), status_code=status_code)
+    return JSONResponse(
+        ReadyOut.from_report(report).model_dump(), status_code=status_code
+    )

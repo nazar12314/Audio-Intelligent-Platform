@@ -5,7 +5,7 @@ information extraction), and querying them in natural language.
 
 | Stage | Scope | Status |
 |---|---|---|
-| 1. Audio ingestion | Users upload recordings via S3 multipart upload; metadata is registered in PostgreSQL | **in progress** (scaffold + domain ready) |
+| 1. Audio ingestion | Users upload recordings via S3 multipart upload; metadata is registered in PostgreSQL | **implemented** (auth is a dev stub, [ADR 0004](docs/adr/0004-auth-port-with-dev-stub.md)) |
 | 2. Audio processing | Preprocessing, transcription, speaker diarization, information extraction | planned |
 | 3. Agentic interaction | Natural-language search, summaries, audio clip generation | planned |
 
@@ -15,7 +15,8 @@ information extraction), and querying them in natural language.
   ports. Technologies live in adapters. `core/container.py` is the single composition root.
 - **Stage 1 flow.** The client uploads audio parts directly to S3 with presigned URLs; the
   API only registers, completes and verifies uploads. See
-  [ADR 0001](docs/adr/0001-stage-1-ingestion-architecture.md).
+  [ADR 0001](docs/adr/0001-stage-1-ingestion-architecture.md) and the client contract in
+  [API.md](API.md).
 - **Infrastructure.** PostgreSQL 18 (system of record) and S3 (audio objects). Locally, S3
   is provided by RustFS ([ADR 0002](docs/adr/0002-local-s3-emulator-rustfs.md)). AWS
   resources are managed with Terraform in [`infra/`](infra/README.md)
@@ -32,7 +33,7 @@ src/audio_platform/
 │   ├── db/                   # async SQLAlchemy engine, declarative base
 │   └── storage/              # S3 client (aioboto3)
 ├── modules/
-│   └── recordings/           # Stage 1: domain (Recording lifecycle) + ports
+│   └── recordings/           # Stage 1: upload lifecycle (domain, service, Postgres + S3 adapters, API)
 └── shared/                   # pure helpers
 ```
 
@@ -108,7 +109,9 @@ and one line per field, when a required setting is missing or invalid.
 | `test-integration` | Integration tests against real Postgres and RustFS (Docker) |
 | `cov` | Whole suite with coverage (gate: 80%) |
 | `migrate` | `alembic upgrade head` against the DB in `.env` |
-| `migration m="…"` | Autogenerate `migrations/versions/NNNN_<slug>.py` |
+| `migration m="…"` | Autogenerate `migrations/versions/<timestamp>_<rev>_<slug>.py` |
+| `migrations-check` | Fail unless migrations have exactly one head (run in CI) |
+| `db-shell` / `db-stats` | `psql` on the local database / overview of migrations, recordings, tables, connections |
 | `infra-up` / `up` / `down` / `logs` | Docker Compose lifecycle |
 | `aws-login` | SSO login to AWS (profile `audio-platform-dev`) |
 | `tf-bootstrap` / `tf-init` / `tf-plan` / `tf-apply` | Terraform for the dev environment ([infra/README.md](infra/README.md)) |
@@ -123,8 +126,9 @@ and one line per field, when a required setting is missing or invalid.
 | HTTP API | ASGI client with a container built from fakes | `tests/api/` |
 | Adapters, infrastructure | testcontainers: Postgres 18, RustFS | `tests/integration/` (`@pytest.mark.integration`) |
 
-In-memory fakes of ports live in `tests/fakes/`. Tests never read `.env`; they build
-`Settings` explicitly (`tests/conftest.py::make_settings`).
+In-memory fakes of ports live in `tests/fakes/`. Contract suites in `tests/contracts/` run
+against both the fakes and the real adapters, so the two cannot drift apart. Tests never
+read `.env`; they build `Settings` explicitly (`tests/conftest.py::make_settings`).
 
 ## Releases
 

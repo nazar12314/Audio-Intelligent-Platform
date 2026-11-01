@@ -67,6 +67,8 @@ data "aws_iam_policy_document" "recordings" {
       "s3:GetObject", # also HeadObject
       "s3:AbortMultipartUpload",
       "s3:ListMultipartUploadParts",
+      "s3:DeleteObject",        # objects that fail verification or belong to aborted uploads
+      "s3:DeleteObjectVersion", # versioned bucket: remove rejected bytes, not just hide them
     ]
     resources = ["${var.recordings_bucket_arn}/${var.recordings_key_prefix}*"]
   }

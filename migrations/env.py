@@ -7,12 +7,12 @@ from sqlalchemy.engine import Connection
 from audio_platform.core.config import get_settings
 from audio_platform.infrastructure.db import Base, sql_engine
 
-# Import every module that defines ORM models exactly once, so autogenerate sees all tables, e.g.:
-# import audio_platform.modules.recordings.adapters.postgres  # noqa: F401
+# Every module that defines ORM models, so autogenerate sees all tables.
+import audio_platform.modules.recordings.adapters.postgres  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

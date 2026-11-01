@@ -1,28 +1,24 @@
-"""Application settings: the only module that reads the environment.
-
-Env vars follow ``AUDIO_<GROUP>__<FIELD>``, e.g. ``AUDIO_POSTGRES__DSN``.
-AWS credentials are deliberately absent: the S3 client uses the default AWS credential chain.
-"""
-
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_MIB = 1024 * 1024
+_S3_MAX_PARTS = 10_000
 
 
 class ApiSettings(BaseModel):
     host: str = "0.0.0.0"  # noqa: S104 - binding all interfaces is required inside the container
     port: int = Field(default=8000, ge=1, le=65535)
     cors_origins: list[str] = []
-    docs_enabled: bool | None = None  # None: enabled everywhere except prod
+    docs_enabled: bool | None = None
 
 
 class PostgresSettings(BaseModel):
-    dsn: SecretStr  # REQUIRED; contains the DB password
+    dsn: SecretStr
     pool_size: int = Field(default=10, ge=1)
     max_overflow: int = Field(default=5, ge=0)
     pool_timeout_s: float = Field(default=5.0, gt=0)
@@ -33,15 +29,15 @@ class PostgresSettings(BaseModel):
     @classmethod
     def _require_asyncpg_driver(cls, value: SecretStr) -> SecretStr:
         if not value.get_secret_value().startswith("postgresql+asyncpg://"):
-            raise ValueError("must be a 'postgresql+asyncpg://user:password@host:port/db' URL")
+            raise ValueError(
+                "must be a 'postgresql+asyncpg://user:password@host:port/db' URL"
+            )
         return value
 
 
 class AwsSettings(BaseModel):
     region: str = "eu-central-1"
     endpoint_url: str | None = None  # set only for local S3-compatible storage (RustFS)
-    # "auto" presigns for the global host, which 307-redirects new buckets outside us-east-1 and breaks
-    # browser uploads; "virtual" uses the regional host. RustFS needs "path".
     s3_addressing_style: Literal["auto", "virtual", "path"] = "virtual"
     connect_timeout_s: float = Field(default=5.0, gt=0)
     read_timeout_s: float = Field(default=30.0, gt=0)
@@ -49,7 +45,42 @@ class AwsSettings(BaseModel):
 
 
 class StorageSettings(BaseModel):
-    bucket: str = Field(min_length=3, max_length=63)  # REQUIRED; audio recordings bucket
+    bucket: str = Field(min_length=3, max_length=63)
+    # Host that clients use for presigned URLs when it differs from aws.endpoint_url
+    # (docker compose: the API reaches rustfs:9000, browsers reach localhost:9000).
+    public_endpoint_url: str | None = None
+
+
+class UploadSettings(BaseModel):
+    max_size_bytes: int = Field(default=2 * 1024 * _MIB, gt=0)
+    part_size_bytes: int = Field(default=16 * _MIB, ge=5 * _MIB, le=5 * 1024 * _MIB)
+    # Presigned URLs stop working when the signing credentials expire (1 h sessions).
+    url_ttl_s: int = Field(default=900, ge=60, le=3600)
+    allowed_content_types: list[str] = [
+        "audio/aac",
+        "audio/flac",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
+        "audio/wave",
+        "audio/webm",
+        "audio/x-flac",
+        "audio/x-m4a",
+        "audio/x-wav",
+    ]
+
+    @model_validator(mode="after")
+    def _fits_s3_part_limit(self) -> UploadSettings:
+        if -(-self.max_size_bytes // self.part_size_bytes) > _S3_MAX_PARTS:
+            raise ValueError(
+                f"max_size_bytes / part_size_bytes exceeds {_S3_MAX_PARTS} parts"
+            )
+        return self
+
+
+class AuthSettings(BaseModel):
+    mode: Literal["dev_header"] = "dev_header"
 
 
 class Settings(BaseSettings):
@@ -63,22 +94,33 @@ class Settings(BaseSettings):
     postgres: PostgresSettings
     aws: AwsSettings = AwsSettings()
     storage: StorageSettings
+    upload: UploadSettings = UploadSettings()
+    auth: AuthSettings = AuthSettings()
 
     model_config = SettingsConfigDict(
         env_prefix="AUDIO_",
         env_nested_delimiter="__",
         env_file=(_REPO_ROOT / ".env",),
-        env_ignore_empty=True,  # a blank value means "unset": blank secrets fail as missing
+        env_ignore_empty=True,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _no_dev_auth_in_prod(self) -> Settings:
+        if self.env == "prod" and self.auth.mode == "dev_header":
+            raise ValueError(
+                "auth.mode 'dev_header' trusts a client header: not for prod"
+            )
+        return self
 
     @property
     def docs_enabled(self) -> bool:
         if self.api.docs_enabled is not None:
             return self.api.docs_enabled
+
         return self.env != "prod"
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()  # required fields come from the environment
+    return Settings()

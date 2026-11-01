@@ -47,11 +47,18 @@ async def _run_one(check: HealthCheck, timeout_s: float) -> CheckResult:
     except Exception as exc:
         # Only the exception type is exposed: messages may contain hosts or credentials.
         error = "timeout" if isinstance(exc, TimeoutError) else type(exc).__name__
-        logger.warning(LogEvent.HEALTH_CHECK_FAILED, check=check.name, required=check.required, error=error)
+        logger.warning(
+            LogEvent.HEALTH_CHECK_FAILED,
+            check=check.name,
+            required=check.required,
+            error=error,
+        )
         return CheckResult(check.name, ok=False, required=check.required, error=error)
     return CheckResult(check.name, ok=True, required=check.required)
 
 
-async def run_checks(checks: Sequence[HealthCheck], timeout_s: float) -> ReadinessReport:
+async def run_checks(
+    checks: Sequence[HealthCheck], timeout_s: float
+) -> ReadinessReport:
     results = await asyncio.gather(*(_run_one(c, timeout_s) for c in checks))
     return ReadinessReport(checks=tuple(results))

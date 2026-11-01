@@ -1,7 +1,8 @@
 .DEFAULT_GOAL := help
 .PHONY: help setup install env hooks run lint format typecheck test test-integration cov \
-        migrate migration infra-up up down logs clean \
-        aws-login tf-bootstrap tf-init tf-plan tf-apply tf-app-env tf-fmt tf-lint
+        migrate migration migrations-check infra-up up down logs clean \
+        aws-login tf-bootstrap tf-init tf-plan tf-apply tf-app-env tf-fmt tf-lint \
+        db-shell db-stats
 
 help:             ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-18s %s\n",$$1,$$2}'
@@ -54,9 +55,20 @@ migrate:          ## Apply migrations to the database in .env
 
 migration:        ## Autogenerate a migration: make migration m="create recordings"
 	@test -n "$(m)" || (echo 'usage: make migration m="short description"' && exit 1)
-	@rev=$$(printf "%04d" $$(( $$(ls migrations/versions/*.py 2>/dev/null | wc -l) + 1 ))); \
-	echo "→ alembic revision $$rev: $(m)"; \
-	poetry run alembic revision --autogenerate --rev-id $$rev -m "$(m)"
+	@echo "→ alembic revision: $(m)"
+	poetry run alembic revision --autogenerate -m "$(m)"
+
+PSQL := docker compose exec postgres psql -U app -d audio_platform
+
+db-shell:         ## Open psql on the local database (needs `make up` or `make infra-up`)
+	$(PSQL)
+
+db-stats:         ## Print migration, recordings, table and connection stats
+	@docker compose exec -T postgres psql -U app -d audio_platform -q < scripts/db-stats.sql
+
+migrations-check: ## Fail unless migrations have exactly one head
+	@test "$$(poetry run alembic heads | wc -l | tr -d ' ')" = "1" \
+		|| (echo "expected exactly one alembic head:"; poetry run alembic heads; exit 1)
 
 infra-up: env     ## Start only infrastructure (Postgres, RustFS), create the bucket, apply migrations
 	@echo "→ starting postgres + rustfs"

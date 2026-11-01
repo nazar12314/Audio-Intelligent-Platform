@@ -4,14 +4,23 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from audio_platform.core.config import PostgresSettings
 
 
 @asynccontextmanager
-async def sql_engine(settings: PostgresSettings, *, application_name: str) -> AsyncIterator[AsyncEngine]:
-    """Create the process-wide engine and dispose of its pool on exit. Connects lazily."""
+async def sql_engine(
+    settings: PostgresSettings, *, application_name: str
+) -> AsyncIterator[AsyncEngine]:
+    """
+    Create the process-wide engine and dispose of its pool on exit. Connects lazily.
+    """
     engine = create_async_engine(
         settings.dsn.get_secret_value(),
         pool_size=settings.pool_size,
