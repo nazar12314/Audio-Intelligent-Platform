@@ -6,7 +6,7 @@ information extraction), and querying them in natural language.
 | Stage | Scope | Status |
 |---|---|---|
 | 1. Audio ingestion | Users upload recordings via S3 multipart upload; metadata is registered in PostgreSQL | **implemented** (auth is a dev stub, [ADR 0004](docs/adr/0004-auth-port-with-dev-stub.md)) |
-| 2. Audio processing | Preprocessing, transcription, speaker diarization, information extraction | planned |
+| 2. Audio processing | Preprocessing, transcription, speaker diarization, information extraction | **VAD implemented** (validation, normalization, Silero VAD; [ADR 0005](docs/adr/0005-event-driven-processing-pipeline.md)) |
 | 3. Agentic interaction | Natural-language search, summaries, audio clip generation | planned |
 
 ## Architecture
@@ -17,6 +17,10 @@ information extraction), and querying them in natural language.
   API only registers, completes and verifies uploads. See
   [ADR 0001](docs/adr/0001-stage-1-ingestion-architecture.md) and the client contract in
   [API.md](API.md).
+- **Processing pipeline.** Event-driven: an uploaded recording emits an event (via a
+  transactional outbox) to SQS; a coordinator creates a job and queues a VAD task; VAD
+  workers validate, normalize and detect speech, then report back. Workers scale
+  horizontally. See [ADR 0005](docs/adr/0005-event-driven-processing-pipeline.md).
 - **Infrastructure.** PostgreSQL 18 (system of record) and S3 (audio objects). Locally, S3
   is provided by RustFS ([ADR 0002](docs/adr/0002-local-s3-emulator-rustfs.md)). AWS
   resources are managed with Terraform in [`infra/`](infra/README.md)
@@ -26,14 +30,15 @@ information extraction), and querying them in natural language.
 
 ```
 src/audio_platform/
-├── entrypoints/api.py        # process entrypoint: `audio-platform-api`
+├── entrypoints/              # `audio-platform-api`, `audio-platform-worker {pipeline,vad}`
 ├── api/                      # app factory, middleware (request ID, CORS), error envelope, health
 ├── core/                     # settings, container, errors, logging, readiness checks
 ├── infrastructure/
 │   ├── db/                   # async SQLAlchemy engine, declarative base
 │   └── storage/              # S3 client (aioboto3)
 ├── modules/
-│   └── recordings/           # Stage 1: upload lifecycle (domain, service, Postgres + S3 adapters, API)
+│   ├── recordings/           # Stage 1: upload lifecycle (domain, service, Postgres + S3 adapters, API)
+│   └── processing/           # Stage 2: jobs, coordinator, VAD worker (PyAV, Silero ONNX)
 └── shared/                   # pure helpers
 ```
 
@@ -75,6 +80,10 @@ local Postgres and the real recordings bucket:
    blank.
 3. Run `make aws-login`, `make infra-up`, then `make run`.
 
+`make up` also starts the processing workers. Run more VAD workers with
+`docker compose up -d --scale vad-worker=3`. Queues and their DLQs are visible in the
+ElasticMQ UI at http://localhost:9325.
+
 RustFS console: http://localhost:9001 (`rustfs-dev` / `rustfs-dev-secret`). If a default
 port is taken, override `APP_HOST_PORT`, `POSTGRES_HOST_PORT`, `S3_HOST_PORT` or
 `S3_CONSOLE_HOST_PORT`.
@@ -111,6 +120,7 @@ and one line per field, when a required setting is missing or invalid.
 | `migrate` | `alembic upgrade head` against the DB in `.env` |
 | `migration m="…"` | Autogenerate `migrations/versions/<timestamp>_<rev>_<slug>.py` |
 | `migrations-check` | Fail unless migrations have exactly one head (run in CI) |
+| `worker-pipeline` / `worker-vad` | Run the pipeline coordinator / a VAD worker on the host |
 | `db-shell` / `db-stats` | `psql` on the local database / overview of migrations, recordings, tables, connections |
 | `infra-up` / `up` / `down` / `logs` | Docker Compose lifecycle |
 | `aws-login` | SSO login to AWS (profile `audio-platform-dev`) |

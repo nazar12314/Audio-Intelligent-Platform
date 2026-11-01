@@ -59,6 +59,21 @@ jobs:
             audio-platform:ci
           for i in $(seq 1 30); do curl -fsS localhost:8000/health/live && exit 0; sleep 1; done
           docker logs smoke; exit 1
+      - name: Build the worker image (processing extra)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          build-args: POETRY_EXTRAS=processing
+          load: true
+          tags: audio-platform-worker:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Worker image has the audio stack
+        run: |
+          docker run --rm audio-platform-worker:ci python -c \
+            "from audio_platform.modules.processing.adapters.silero_onnx import SileroOnnxModel; SileroOnnxModel(); import av"
+          docker run --rm audio-platform-worker:ci audio-platform-worker --help
       - name: Refuses to start without required settings
         run: |
           set +e; docker run --rm audio-platform:ci; code=$?

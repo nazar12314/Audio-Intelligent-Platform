@@ -83,6 +83,25 @@ def s3_endpoint() -> Iterator[str]:
         yield endpoint
 
 
+@pytest.fixture(scope="session")
+def sqs_endpoint() -> Iterator[str]:
+    container = (
+        DockerContainer("softwaremill/elasticmq-native:1.7.1")
+        .with_volume_mapping(
+            str(REPO_ROOT / "docker" / "elasticmq" / "elasticmq.conf"),
+            "/opt/elasticmq.conf",
+            "ro",
+        )
+        .with_exposed_ports(9324)
+        .waiting_for(HttpWaitStrategy(9324, "/?Action=ListQueues").for_status_code(200))
+    )
+    with container:
+        yield (
+            f"http://{container.get_container_host_ip()}"
+            f":{container.get_exposed_port(9324)}"
+        )
+
+
 @pytest.fixture
 def aws_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", S3_ACCESS_KEY)
@@ -91,7 +110,9 @@ def aws_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def settings(migrated_dsn: str, s3_endpoint: str, aws_credentials: None) -> Settings:
+def settings(
+    migrated_dsn: str, s3_endpoint: str, sqs_endpoint: str, aws_credentials: None
+) -> Settings:
     return make_settings(
         postgres={"dsn": migrated_dsn},
         aws={
@@ -101,4 +122,10 @@ def settings(migrated_dsn: str, s3_endpoint: str, aws_credentials: None) -> Sett
         },
         storage={"bucket": BUCKET},
         upload={"part_size_bytes": 5 * 1024 * 1024},
+        messaging={
+            "endpoint_url": sqs_endpoint,
+            "wait_time_s": 1,
+            "visibility_timeout_s": 10,
+            "relay_interval_s": 0.2,
+        },
     )

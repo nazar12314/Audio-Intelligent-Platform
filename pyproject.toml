@@ -16,8 +16,13 @@ dependencies = [
     "aioboto3>=15.5.0",
 ]
 
+[project.optional-dependencies]
+# Audio processing workers only; the API image is built without them.
+processing = ["av>=19.0.2", "onnxruntime>=1.31.1", "numpy>=2.5.4"]
+
 [project.scripts]
 audio-platform-api = "audio_platform.entrypoints.api:main"
+audio-platform-worker = "audio_platform.entrypoints.worker:main"
 
 [tool.poetry]
 packages = [{ include = "audio_platform", from = "src" }]
@@ -25,7 +30,7 @@ packages = [{ include = "audio_platform", from = "src" }]
 [tool.poetry.group.dev.dependencies]
 ruff = "0.17.3"
 mypy = "^2.4.1"
-types-aioboto3 = { version = "^15.5.0", extras = ["s3"] }
+types-aioboto3 = { version = "^15.5.0", extras = ["s3", "sqs"] }
 pytest = "^9.2.0"
 pytest-asyncio = "^1.4.1"
 pytest-cov = "^7.1.0"
@@ -59,6 +64,8 @@ ignore = ["B008"] # FastAPI Depends() in argument defaults
 "aioboto3".msg = "object storage only: use it in adapters/ or infrastructure/"
 "aiobotocore".msg = "object storage only: use it in adapters/ or infrastructure/"
 "botocore".msg = "object storage only: use it in adapters/ or infrastructure/"
+"av".msg = "audio decoding only: use it in adapters/"
+"onnxruntime".msg = "model inference only: use it in adapters/"
 
 [tool.ruff.lint.per-file-ignores]
 "src/audio_platform/api/**" = ["TID251"]
@@ -67,7 +74,7 @@ ignore = ["B008"] # FastAPI Depends() in argument defaults
 "src/audio_platform/infrastructure/**" = ["TID251"]
 "src/audio_platform/core/container.py" = ["TID251"]
 "src/audio_platform/entrypoints/**" = ["TID251"]
-"tests/**" = ["S101", "S105", "S106", "TID251"]
+"tests/**" = ["S101", "S105", "S106", "TID251", "ASYNC240", "ASYNC110"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["audio_platform"]
@@ -89,7 +96,7 @@ module = "tests.*"
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*", "boto3.*"]
+module = ["testcontainers.*", "boto3.*", "onnxruntime.*"]
 ignore_missing_imports = true
 
 

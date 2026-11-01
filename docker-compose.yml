@@ -13,10 +13,27 @@ x-app: &app
     AUDIO_AWS__ENDPOINT_URL: http://rustfs:9000
     AUDIO_AWS__S3_ADDRESSING_STYLE: path
     AUDIO_STORAGE__PUBLIC_ENDPOINT_URL: http://localhost:${S3_HOST_PORT:-9000}
+    AUDIO_MESSAGING__ENDPOINT_URL: http://elasticmq:9324
     AWS_ACCESS_KEY_ID: *dev-s3-access-key
     AWS_SECRET_ACCESS_KEY: *dev-s3-secret-key
   restart: unless-stopped
   networks: [backend]
+
+x-worker: &worker
+  <<: *app
+  build:
+    context: .
+    dockerfile: docker/app/Dockerfile
+    args: { POETRY_EXTRAS: processing }
+  image: audio-platform-worker:dev
+  # Time to finish the message in hand after SIGTERM; longer work is retried.
+  stop_grace_period: 60s
+  depends_on:
+    postgres: { condition: service_healthy }
+    rustfs: { condition: service_healthy }
+    elasticmq: { condition: service_healthy }
+    migrate: { condition: service_completed_successfully }
+    s3-init: { condition: service_completed_successfully }
 
 services:
   app:
@@ -42,6 +59,14 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  pipeline: # outbox relay + pipeline coordinator
+    <<: *worker
+    command: ["audio-platform-worker", "pipeline"]
+
+  vad-worker: # scale out: docker compose up -d --scale vad-worker=3
+    <<: *worker
+    command: ["audio-platform-worker", "vad"]
+
   # ── Infrastructure ─────────────────────────────────────────────────────────
   postgres:
     image: postgres:18.6-alpine
@@ -62,6 +87,19 @@ services:
       - "${S3_CONSOLE_HOST_PORT:-9001}:9001" # web console, dev only
     volumes: [rustfs_data:/data]
     healthcheck: { test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"], interval: 5s, timeout: 3s, retries: 10 }
+    networks: [backend]
+
+  elasticmq: # SQS-compatible broker, stands in for Amazon SQS (see docs/adr/0005)
+    image: softwaremill/elasticmq-native:1.7.1
+    ports:
+      - "${SQS_HOST_PORT:-9324}:9324" # SQS API, for workers run on the host
+      - "${SQS_UI_HOST_PORT:-9325}:9325" # queue stats UI, dev only
+    volumes: [./docker/elasticmq/elasticmq.conf:/opt/elasticmq.conf:ro]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9324/?Action=ListQueues"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks: [backend]
 
   s3-init: # one-shot: bucket + browser CORS (on AWS both come from Terraform)

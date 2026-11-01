@@ -11,8 +11,10 @@ from audio_platform.core.auth import DevHeaderAuthenticator
 from audio_platform.core.config import Settings
 from audio_platform.core.container import Container
 from audio_platform.core.health import HealthCheck
+from audio_platform.modules.processing.services import ProcessingQueries
 from audio_platform.modules.recordings.domain import UploadPolicy
 from audio_platform.modules.recordings.services import RecordingService
+from tests.fakes.processing import InMemoryArtifactStorage, InMemoryProcessingStore
 from tests.fakes.recordings import FakeAudioObjectStorage, InMemoryRecordingStore
 
 TEST_DSN = "postgresql+asyncpg://test:test@localhost:5432/test"
@@ -72,11 +74,23 @@ def fake_storage() -> FakeAudioObjectStorage:
 
 
 @pytest.fixture
+def processing_store() -> InMemoryProcessingStore:
+    return InMemoryProcessingStore()
+
+
+@pytest.fixture
+def artifact_storage() -> InMemoryArtifactStorage:
+    return InMemoryArtifactStorage()
+
+
+@pytest.fixture
 def app(
     settings: Settings,
     health_checks: list[HealthCheck],
     recordings_store: InMemoryRecordingStore,
     fake_storage: FakeAudioObjectStorage,
+    processing_store: InMemoryProcessingStore,
+    artifact_storage: InMemoryArtifactStorage,
 ) -> FastAPI:
     async def fake_container(s: Settings) -> Container:
         return Container(
@@ -85,6 +99,9 @@ def app(
             health_checks=tuple(health_checks),
             authenticator=DevHeaderAuthenticator(),
             recording_service=make_recording_service(s, recordings_store, fake_storage),
+            processing_queries=ProcessingQueries(
+                processing_store.unit_of_work, artifact_storage
+            ),
         )
 
     return create_app(settings, container_factory=fake_container)

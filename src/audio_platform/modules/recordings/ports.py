@@ -1,10 +1,11 @@
-"""Interfaces the recordings feature depends on. Implementations live in adapters/."""
+"""Interfaces the recordings feature depends on."""
 
 from collections.abc import Callable, Sequence
 from types import TracebackType
 from typing import Protocol, Self
 from uuid import UUID
 
+from audio_platform.core.messaging import Outbox
 from audio_platform.modules.recordings.domain import (
     Recording,
     StoredObject,
@@ -36,6 +37,9 @@ class RecordingRepository(Protocol):
 class RecordingUnitOfWork(Protocol):
     @property
     def recordings(self) -> RecordingRepository: ...
+
+    @property
+    def outbox(self) -> Outbox: ...
 
     async def __aenter__(self) -> Self: ...
 

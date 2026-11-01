@@ -8,7 +8,7 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
-        exclude: ^poetry\.lock$ # generated, must be committed
+        exclude: ^(poetry\.lock|src/audio_platform/modules/processing/adapters/silero/silero_vad_16k\.onnx)$
       - id: detect-private-key
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.3 # must match the ruff version in pyproject.toml

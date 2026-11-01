@@ -27,6 +27,23 @@ class LogEvent(StrEnum):
     RECORDING_UPLOAD_FAILED = "recordings.recording.upload_failed"
     RECORDING_ABORTED = "recordings.recording.aborted"
     RECORDING_OBJECT_CLEANUP_FAILED = "recordings.object.cleanup_failed"
+    OUTBOX_RELAY_FAILED = "messaging.outbox.relay_failed"
+    CONSUMER_RECEIVE_FAILED = "messaging.consumer.receive_failed"
+    MESSAGE_INVALID = "messaging.message.invalid"
+    MESSAGE_HANDLING_FAILED = "messaging.message.handling_failed"
+    MESSAGE_HANDLING_TIMED_OUT = "messaging.message.handling_timed_out"
+    OUTBOX_PURGED = "messaging.outbox.purged"
+    OUTBOX_ROW_UNPUBLISHABLE = "messaging.outbox.row_unpublishable"
+    OUTBOX_CLEANUP_FAILED = "messaging.outbox.cleanup_failed"
+    WORKER_STARTED = "worker.started"
+    WORKER_STOPPED = "worker.stopped"
+    PROCESSING_JOB_CREATED = "processing.job.created"
+    PROCESSING_JOB_COMPLETED = "processing.job.completed"
+    PROCESSING_JOB_FAILED = "processing.job.failed"
+    VAD_STARTED = "processing.vad.started"
+    VAD_COMPLETED = "processing.vad.completed"
+    VAD_FAILED = "processing.vad.failed"
+    VAD_RETRY_SCHEDULED = "processing.vad.retry_scheduled"
 
 
 _SENSITIVE_KEY = re.compile(

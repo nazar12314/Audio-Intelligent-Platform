@@ -79,6 +79,35 @@ class UploadSettings(BaseModel):
         return self
 
 
+class MessagingSettings(BaseModel):
+    endpoint_url: str | None = None  # SQS-compatible endpoint (ElasticMQ); empty on AWS
+    pipeline_events_queue: str = "audio-platform-dev-pipeline-events"
+    vad_tasks_queue: str = "audio-platform-dev-vad-tasks"
+    wait_time_s: int = Field(default=20, ge=0, le=20)
+    # Workers extend this lease while busy, so it only bounds crash recovery time.
+    visibility_timeout_s: int = Field(default=60, ge=10, le=43_200)
+    # Must stay below the queues' redrive maxReceiveCount: the last attempt records
+    # the failure itself instead of leaving the message to the DLQ.
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    # Upper bound per message: the lease stops being extended and the message is
+    # retried, so a hung handler cannot hold it forever.
+    handler_timeout_s: int = Field(default=3600, ge=1)
+    relay_batch_size: int = Field(default=50, ge=1, le=500)
+    relay_interval_s: float = Field(default=1.0, gt=0)
+    outbox_retention_days: int = Field(default=7, ge=1)
+    outbox_cleanup_interval_s: int = Field(default=3600, ge=1)
+
+
+class ProcessingSettings(BaseModel):
+    max_duration_s: int = Field(default=4 * 3600, gt=0)
+    # Decoding and VAD run in a child process that is killed after this long.
+    analysis_timeout_s: int = Field(default=1800, ge=1)
+    vad_threshold: float = Field(default=0.5, gt=0, lt=1)
+    vad_min_speech_ms: int = Field(default=250, ge=0)
+    vad_min_silence_ms: int = Field(default=100, ge=0)
+    vad_speech_pad_ms: int = Field(default=30, ge=0)
+
+
 class AuthSettings(BaseModel):
     mode: Literal["dev_header"] = "dev_header"
 
@@ -96,6 +125,8 @@ class Settings(BaseSettings):
     storage: StorageSettings
     upload: UploadSettings = UploadSettings()
     auth: AuthSettings = AuthSettings()
+    messaging: MessagingSettings = MessagingSettings()
+    processing: ProcessingSettings = ProcessingSettings()
 
     model_config = SettingsConfigDict(
         env_prefix="AUDIO_",
@@ -104,6 +135,14 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _handler_outlives_analysis(self) -> Settings:
+        if self.messaging.handler_timeout_s <= self.processing.analysis_timeout_s:
+            raise ValueError(
+                "messaging.handler_timeout_s must exceed processing.analysis_timeout_s"
+            )
+        return self
 
     @model_validator(mode="after")
     def _no_dev_auth_in_prod(self) -> Settings:

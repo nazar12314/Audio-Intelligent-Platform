@@ -8,6 +8,8 @@ from audio_platform.core.config import get_settings
 from audio_platform.infrastructure.db import Base, sql_engine
 
 # Every module that defines ORM models, so autogenerate sees all tables.
+import audio_platform.infrastructure.db.outbox  # noqa: F401
+import audio_platform.modules.processing.adapters.postgres  # noqa: F401
 import audio_platform.modules.recordings.adapters.postgres  # noqa: F401
 
 config = context.config
