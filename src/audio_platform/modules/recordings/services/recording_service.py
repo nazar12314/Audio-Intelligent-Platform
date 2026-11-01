@@ -46,6 +46,12 @@ class PresignedPart:
 
 
 @dataclass(frozen=True, slots=True)
+class RegisteredRecording:
+    recording: Recording
+    first_part: PresignedPart
+
+
+@dataclass(frozen=True, slots=True)
 class PresignedDownload:
     url: str
     expires_at: datetime
@@ -81,7 +87,7 @@ class RecordingService:
 
     async def register(
         self, owner_id: UUID, *, filename: str, content_type: str, size_bytes: int
-    ) -> Recording:
+    ) -> RegisteredRecording:
         try:
             self._policy.check(content_type=content_type, size_bytes=size_bytes)
         except UploadRejected as exc:
@@ -115,7 +121,9 @@ class RecordingService:
             size_bytes=size_bytes,
             part_count=recording.part_count,
         )
-        return recording
+        # Saves small, single-part files a round trip before their only upload.
+        first_part = await self._presign(recording, upload_id, 1)
+        return RegisteredRecording(recording=recording, first_part=first_part)
 
     async def get(self, owner_id: UUID, recording_id: UUID) -> Recording:
         async with self._uow() as uow:
@@ -149,13 +157,22 @@ class RecordingService:
     ) -> PresignedPart:
         recording = await self.get(owner_id, recording_id)
         upload_id = self._require_pending_upload(recording)
+        return await self._presign(recording, upload_id, part_number)
+
+    async def _presign(
+        self, recording: Recording, upload_id: str, part_number: int
+    ) -> PresignedPart:
         try:
-            recording.check_part_number(part_number)
+            content_length = recording.part_size_for(part_number)
         except InvalidPartList as exc:
             raise ValidationFailed(str(exc)) from None
 
         url = await self._storage.presign_upload_part(
-            recording.object_key, upload_id, part_number, self._url_ttl_s
+            recording.object_key,
+            upload_id,
+            part_number,
+            self._url_ttl_s,
+            content_length=content_length,
         )
         expires_at = self._clock() + timedelta(seconds=self._url_ttl_s)
         return PresignedPart(part_number=part_number, url=url, expires_at=expires_at)

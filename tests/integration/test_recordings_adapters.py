@@ -19,6 +19,7 @@ from tests.contracts.recordings import (
     Downloader,
     PartUploader,
     RecordingUnitOfWorkContract,
+    StorageRejectedPut,
 )
 
 pytestmark = pytest.mark.integration
@@ -36,7 +37,8 @@ class TestS3AudioObjectStorage(AudioObjectStorageContract):
 
             async def upload(url: str, data: bytes) -> str:
                 response = await http.put(url, content=data)
-                response.raise_for_status()
+                if response.is_error:
+                    raise StorageRejectedPut(response.status_code)
                 return response.headers["etag"]
 
             yield upload

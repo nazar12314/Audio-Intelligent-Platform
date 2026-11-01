@@ -37,18 +37,24 @@ recordings_router = APIRouter(prefix="/recordings", tags=["recordings"])
 async def register_recording(
     body: RegisterRecordingIn, user: CurrentUser, service: Service
 ) -> RegisteredRecordingOut:
-    recording = await service.register(
+    registered = await service.register(
         user.user_id,
         filename=body.filename,
         content_type=body.content_type,
         size_bytes=body.size_bytes,
     )
+    recording, first_part = registered.recording, registered.first_part
     return RegisteredRecordingOut(
         recording=RecordingOut.from_domain(recording),
         upload=UploadPlanOut(
             part_size_bytes=recording.part_size_bytes,
             part_count=recording.part_count,
             url_ttl_s=service.url_ttl_s,
+            first_part=PartUploadUrlOut(
+                part_number=first_part.part_number,
+                url=first_part.url,
+                expires_at=first_part.expires_at,
+            ),
         ),
     )
 

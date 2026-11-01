@@ -48,7 +48,13 @@ class S3AudioObjectStorage:
         return response["UploadId"]
 
     async def presign_upload_part(
-        self, key: str, upload_id: str, part_number: int, expires_in_s: int
+        self,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        expires_in_s: int,
+        *,
+        content_length: int,
     ) -> str:
         with _translate_errors():
             return await self._presigner.generate_presigned_url(
@@ -58,6 +64,7 @@ class S3AudioObjectStorage:
                     "Key": key,
                     "UploadId": upload_id,
                     "PartNumber": part_number,
+                    "ContentLength": content_length,
                 },
                 ExpiresIn=expires_in_s,
             )

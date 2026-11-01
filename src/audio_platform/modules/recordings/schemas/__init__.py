@@ -63,12 +63,6 @@ class RecordingOut(BaseModel):
         )
 
 
-class UploadPlanOut(BaseModel):
-    part_size_bytes: int
-    part_count: int
-    url_ttl_s: int
-
-
 class RegisteredRecordingOut(BaseModel):
     recording: RecordingOut
     upload: UploadPlanOut
@@ -88,6 +82,13 @@ class PartUploadUrlOut(BaseModel):
     part_number: int
     url: str
     expires_at: datetime
+
+
+class UploadPlanOut(BaseModel):
+    part_size_bytes: int
+    part_count: int
+    url_ttl_s: int
+    first_part: PartUploadUrlOut
 
 
 class CompletedPartIn(BaseModel):
