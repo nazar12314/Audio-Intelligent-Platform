@@ -108,6 +108,12 @@ class Recording:
                 f"part_number must be between 1 and {self.part_count}"
             )
 
+    def part_size_for(self, part_number: int) -> int:
+        self.check_part_number(part_number)
+        if part_number < self.part_count:
+            return self.part_size_bytes
+        return self.size_bytes - (self.part_count - 1) * self.part_size_bytes
+
     def check_completed_parts(self, parts: Sequence[UploadedPart]) -> None:
         numbers = sorted(p.part_number for p in parts)
         if numbers != list(range(1, self.part_count + 1)):

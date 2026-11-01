@@ -24,6 +24,10 @@ Downloader = Callable[[str], Awaitable[bytes]]  # presigned URL -> body
 MIB = 1024 * 1024
 
 
+class StorageRejectedPut(Exception):
+    """Raised by a PartUploader when storage refuses the PUT."""
+
+
 def _key() -> str:
     return f"users/{uuid.uuid4()}/recordings/{uuid.uuid4()}/original"
 
@@ -44,7 +48,9 @@ class AudioObjectStorageContract:
         upload_id = await storage.create_multipart_upload(key, "audio/mpeg")
         parts = []
         for number, chunk in enumerate(chunks, start=1):
-            url = await storage.presign_upload_part(key, upload_id, number, 300)
+            url = await storage.presign_upload_part(
+                key, upload_id, number, 300, content_length=len(chunk)
+            )
             parts.append(UploadedPart(number, await upload_part(url, chunk)))
         return key, upload_id, parts
 
@@ -85,6 +91,21 @@ class AudioObjectStorageContract:
         await storage.complete_multipart_upload(key, upload_id, parts)
 
         assert await download(await storage.presign_download(key, 300)) == body
+
+    @pytest.mark.parametrize("body_size", [999, 1001])
+    async def test_part_url_only_accepts_the_signed_size(
+        self, storage: AudioObjectStorage, upload_part: PartUploader, body_size: int
+    ) -> None:
+        key = _key()
+        upload_id = await storage.create_multipart_upload(key, "audio/mpeg")
+        url = await storage.presign_upload_part(
+            key, upload_id, 1, 300, content_length=1000
+        )
+
+        with pytest.raises(StorageRejectedPut):
+            await upload_part(url, os.urandom(body_size))
+        assert await upload_part(url, os.urandom(1000))
+        await storage.abort_multipart_upload(key, upload_id)
 
     async def test_missing_object_is_none(self, storage: AudioObjectStorage) -> None:
         assert await storage.head_object(_key()) is None

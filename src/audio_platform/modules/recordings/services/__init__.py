@@ -3,6 +3,13 @@ from audio_platform.modules.recordings.services.recording_service import (
     PresignedPart,
     RecordingPage,
     RecordingService,
+    RegisteredRecording,
 )
 
-__all__ = ["PresignedDownload", "PresignedPart", "RecordingPage", "RecordingService"]
+__all__ = [
+    "PresignedDownload",
+    "PresignedPart",
+    "RecordingPage",
+    "RecordingService",
+    "RegisteredRecording",
+]

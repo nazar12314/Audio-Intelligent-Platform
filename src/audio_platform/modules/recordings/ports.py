@@ -71,8 +71,19 @@ class AudioObjectStorage(Protocol):
         ...
 
     async def presign_upload_part(
-        self, key: str, upload_id: str, part_number: int, expires_in_s: int
-    ) -> str: ...
+        self,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        expires_in_s: int,
+        *,
+        content_length: int,
+    ) -> str:
+        """
+        The URL is signed for exactly `content_length` bytes: storage rejects any
+        other body size when the part is uploaded.
+        """
+        ...
 
     async def complete_multipart_upload(
         self, key: str, upload_id: str, parts: Sequence[UploadedPart]

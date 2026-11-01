@@ -49,12 +49,15 @@ async def test_client_uploads_a_recording_through_presigned_urls(
 
         parts = []
         for number in range(1, plan["part_count"] + 1):
-            url = (
-                await api.post(
-                    f"/api/v1/recordings/{recording_id}/parts/{number}/upload-url",
-                    headers=USER,
-                )
-            ).json()["url"]
+            if number == 1:
+                url = plan["first_part"]["url"]
+            else:
+                url = (
+                    await api.post(
+                        f"/api/v1/recordings/{recording_id}/parts/{number}/upload-url",
+                        headers=USER,
+                    )
+                ).json()["url"]
             start = (number - 1) * plan["part_size_bytes"]
             chunk = audio[start : start + plan["part_size_bytes"]]
             put = await storage.put(url, content=chunk)

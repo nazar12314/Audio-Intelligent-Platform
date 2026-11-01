@@ -6,8 +6,13 @@ from tests.contracts.recordings import (
     Downloader,
     PartUploader,
     RecordingUnitOfWorkContract,
+    StorageRejectedPut,
 )
-from tests.fakes.recordings import FakeAudioObjectStorage, InMemoryRecordingStore
+from tests.fakes.recordings import (
+    FakeAudioObjectStorage,
+    InMemoryRecordingStore,
+    SignedSizeMismatch,
+)
 
 
 class TestFakeAudioObjectStorage(AudioObjectStorageContract):
@@ -18,7 +23,10 @@ class TestFakeAudioObjectStorage(AudioObjectStorageContract):
     @pytest.fixture
     def upload_part(self, storage: FakeAudioObjectStorage) -> PartUploader:
         async def upload(url: str, data: bytes) -> str:
-            return storage.put_part(url, data)
+            try:
+                return storage.put_part(url, data)
+            except SignedSizeMismatch:
+                raise StorageRejectedPut from None
 
         return upload
 

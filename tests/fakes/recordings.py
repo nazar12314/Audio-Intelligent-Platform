@@ -18,6 +18,10 @@ from audio_platform.modules.recordings.ports import PartsRejected, UploadNotFoun
 S3_MIN_PART_SIZE = 5 * 1024 * 1024
 
 
+class SignedSizeMismatch(Exception):
+    """What S3 answers (403) when a PUT body differs from the signed length."""
+
+
 class InMemoryRecordingRepository:
     def __init__(self, rows: dict[uuid.UUID, Recording]) -> None:
         self._rows = rows
@@ -133,11 +137,17 @@ class FakeAudioObjectStorage:
         return upload_id
 
     async def presign_upload_part(
-        self, key: str, upload_id: str, part_number: int, expires_in_s: int
+        self,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        expires_in_s: int,
+        *,
+        content_length: int,
     ) -> str:
         return (
-            f"{self.base_url}/{key}?uploadId={upload_id}"
-            f"&partNumber={part_number}&expires={expires_in_s}"
+            f"{self.base_url}/{key}?uploadId={upload_id}&partNumber={part_number}"
+            f"&contentLength={content_length}&expires={expires_in_s}"
         )
 
     async def presign_download(self, key: str, expires_in_s: int) -> str:
@@ -147,9 +157,14 @@ class FakeAudioObjectStorage:
         """What a client's GET to a presigned download URL returns."""
         return self.bodies[urlsplit(url).path.removeprefix("/")]
 
-    def put_part(self, url: str, data: bytes) -> str:
-        """What a client's PUT to a presigned URL does; returns the ETag."""
+    def put_part(self, url: str, data: bytes, *, enforce_length: bool = True) -> str:
+        """
+        What a client's PUT to a presigned URL does; returns the ETag.
+        `enforce_length=False` mimics storage that ignores the signed size.
+        """
         query = parse_qs(urlsplit(url).query)
+        if enforce_length and len(data) != int(query["contentLength"][0]):
+            raise SignedSizeMismatch
         upload = self.uploads.get(query["uploadId"][0])
         if upload is None:
             raise UploadNotFound

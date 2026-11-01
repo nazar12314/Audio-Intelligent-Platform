@@ -18,19 +18,23 @@ A missing or malformed header returns `401`.
 
 ```
 1. POST /api/v1/recordings                                → recording + upload plan
+                                                            (includes part 1's URL)
 2. for n in 1..part_count:
-     POST /api/v1/recordings/{id}/parts/{n}/upload-url    → presigned URL
+     POST /api/v1/recordings/{id}/parts/{n}/upload-url    → presigned URL (n ≥ 2)
      PUT <url> with bytes [(n-1)·part_size, n·part_size)  → keep the ETag response header
 3. POST /api/v1/recordings/{id}/complete {parts: [{part_number, etag}]}
                                                           → status uploaded | failed
 ```
 
 1. **Register:** `{"filename", "content_type", "size_bytes"}`. `size_bytes` must be the
-   exact file size: it is verified after the upload. The response's `upload` holds
-   `part_size_bytes`, `part_count` and `url_ttl_s`.
-2. **Upload parts:** every part except the last must be exactly `part_size_bytes`. URLs
-   expire after `url_ttl_s`; request a new one to retry a part. Parts can be uploaded in
-   parallel. Browsers must read the `ETag` response header (storage exposes it via CORS).
+   exact file size. The response's `upload` holds `part_size_bytes`, `part_count`,
+   `url_ttl_s` and `first_part` (`{part_number, url, expires_at}`), so a file that fits
+   in one part needs no further URL request.
+2. **Upload parts:** every part except the last is exactly `part_size_bytes`; the last
+   is the remainder. Each URL is signed for its part's exact size, so storage answers
+   any other body size with `403 SignatureDoesNotMatch`. URLs expire after `url_ttl_s`;
+   request a new one to retry a part. Parts can be uploaded in parallel. Browsers must
+   read the `ETag` response header (storage exposes it via CORS).
 3. **Complete:** send every part with its ETag. The API asks storage to assemble the
    file, checks its size, and returns the recording:
    - `uploaded`: done;

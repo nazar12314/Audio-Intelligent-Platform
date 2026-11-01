@@ -44,11 +44,14 @@ async def test_register_returns_the_recording_and_its_upload_plan(
     assert isinstance(recording, dict) and isinstance(upload, dict)
     assert recording["status"] == "pending_upload"
     assert recording["content_type"] == "audio/wav"
+    first_part = upload.pop("first_part")
     assert upload == {
         "part_size_bytes": 16 * 1024 * 1024,
         "part_count": 1,
         "url_ttl_s": 900,
     }
+    assert first_part["part_number"] == 1
+    assert first_part["url"].startswith("https://storage.test/")
     assert "object_key" not in recording and "upload_id" not in recording
 
 
@@ -75,14 +78,11 @@ async def test_invalid_registrations_use_the_error_envelope(
 async def test_full_upload_flow(
     client: httpx.AsyncClient, fake_storage: FakeAudioObjectStorage
 ) -> None:
-    recording_id = (await _register(client))["recording"]["id"]  # type: ignore[index]
+    registered = await _register(client)
+    recording_id = registered["recording"]["id"]  # type: ignore[index]
+    first_part_url = registered["upload"]["first_part"]["url"]  # type: ignore[index]
 
-    url_response = await client.post(
-        f"/api/v1/recordings/{recording_id}/parts/1/upload-url", headers=USER
-    )
-    assert url_response.status_code == 200
-    etag = fake_storage.put_part(url_response.json()["url"], AUDIO)
-
+    etag = fake_storage.put_part(first_part_url, AUDIO)
     complete = await client.post(
         f"/api/v1/recordings/{recording_id}/complete",
         json={"parts": [{"part_number": 1, "etag": etag}]},

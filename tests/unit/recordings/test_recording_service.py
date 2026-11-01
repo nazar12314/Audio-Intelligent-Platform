@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -16,7 +17,11 @@ from audio_platform.modules.recordings.domain import (
 )
 from audio_platform.modules.recordings.services import RecordingService
 from tests.conftest import make_recording_service, make_settings
-from tests.fakes.recordings import FakeAudioObjectStorage, InMemoryRecordingStore
+from tests.fakes.recordings import (
+    FakeAudioObjectStorage,
+    InMemoryRecordingStore,
+    SignedSizeMismatch,
+)
 
 T0 = datetime(2026, 1, 1, 12, tzinfo=UTC)
 OWNER = uuid.UUID("00000000-0000-7000-8000-00000000000a")
@@ -34,10 +39,10 @@ def service(
 
 
 async def _register(service: RecordingService, size: int = len(AUDIO)) -> uuid.UUID:
-    recording = await service.register(
+    registered = await service.register(
         OWNER, filename="call.mp3", content_type="audio/mpeg", size_bytes=size
     )
-    return recording.id
+    return registered.recording.id
 
 
 async def _upload(
@@ -45,9 +50,12 @@ async def _upload(
     storage: FakeAudioObjectStorage,
     recording_id: uuid.UUID,
     data: bytes = AUDIO,
+    *,
+    enforce_length: bool = True,
 ) -> list[UploadedPart]:
     part = await service.presign_part(OWNER, recording_id, 1)
-    return [UploadedPart(1, storage.put_part(part.url, data))]
+    etag = storage.put_part(part.url, data, enforce_length=enforce_length)
+    return [UploadedPart(1, etag)]
 
 
 async def test_register_stores_a_pending_recording_and_starts_the_upload(
@@ -55,11 +63,11 @@ async def test_register_stores_a_pending_recording_and_starts_the_upload(
     recordings_store: InMemoryRecordingStore,
     fake_storage: FakeAudioObjectStorage,
 ) -> None:
-    recording = await service.register(
+    registered = await service.register(
         OWNER, filename="call.mp3", content_type="audio/mpeg", size_bytes=len(AUDIO)
     )
 
-    stored = recordings_store.rows[recording.id]
+    stored = recordings_store.rows[registered.recording.id]
     assert stored.status is RecordingStatus.PENDING_UPLOAD
     assert stored.part_count == 1
     assert fake_storage.uploads[stored.upload_id or ""].key == stored.object_key
@@ -190,7 +198,7 @@ async def test_size_mismatch_fails_the_recording(
     service: RecordingService, fake_storage: FakeAudioObjectStorage
 ) -> None:
     recording_id = await _register(service, size=len(AUDIO) + 1)
-    parts = await _upload(service, fake_storage, recording_id)
+    parts = await _upload(service, fake_storage, recording_id, enforce_length=False)
 
     recording = await service.complete(OWNER, recording_id, parts)
 
@@ -263,7 +271,9 @@ async def test_size_mismatch_deletes_the_stored_object(
     fake_storage: FakeAudioObjectStorage,
 ) -> None:
     recording_id = await _register(service, size=10)
-    parts = await _upload(service, fake_storage, recording_id, data=b"x" * 10_000)
+    parts = await _upload(
+        service, fake_storage, recording_id, data=b"x" * 10_000, enforce_length=False
+    )
 
     recording = await service.complete(OWNER, recording_id, parts)
 
@@ -275,7 +285,7 @@ async def test_failed_cleanup_is_logged_not_raised(
     service: RecordingService, fake_storage: FakeAudioObjectStorage
 ) -> None:
     recording_id = await _register(service, size=len(AUDIO) + 1)
-    parts = await _upload(service, fake_storage, recording_id)
+    parts = await _upload(service, fake_storage, recording_id, enforce_length=False)
     fake_storage.fail_deletes = True
 
     recording = await service.complete(OWNER, recording_id, parts)
@@ -355,3 +365,46 @@ async def test_download_url_only_for_uploaded_recordings(
 
     assert fake_storage.get(download.url) == AUDIO
     assert download.expires_at == T0 + timedelta(seconds=service.url_ttl_s)
+
+
+async def test_registration_includes_a_url_for_the_first_part(
+    service: RecordingService, fake_storage: FakeAudioObjectStorage
+) -> None:
+    registered = await service.register(
+        OWNER, filename="call.mp3", content_type="audio/mpeg", size_bytes=len(AUDIO)
+    )
+    etag = fake_storage.put_part(registered.first_part.url, AUDIO)
+
+    recording = await service.complete(
+        OWNER, registered.recording.id, [UploadedPart(1, etag)]
+    )
+
+    assert registered.first_part.part_number == 1
+    assert recording.status is RecordingStatus.UPLOADED
+
+
+@pytest.mark.parametrize("size", [len(AUDIO) + 1, len(AUDIO) - 1])
+async def test_part_urls_only_accept_the_declared_size(
+    service: RecordingService, fake_storage: FakeAudioObjectStorage, size: int
+) -> None:
+    recording_id = await _register(service, size=size)
+
+    with pytest.raises(SignedSizeMismatch):
+        await _upload(service, fake_storage, recording_id)
+
+
+async def test_each_part_url_is_signed_for_that_parts_size(
+    recordings_store: InMemoryRecordingStore, fake_storage: FakeAudioObjectStorage
+) -> None:
+    mib = 1024 * 1024
+    service = make_recording_service(
+        make_settings(upload={"part_size_bytes": 5 * mib}),
+        recordings_store,
+        fake_storage,
+    )
+    recording_id = await _register(service, size=12 * mib)
+
+    urls = [(await service.presign_part(OWNER, recording_id, n)).url for n in (1, 2, 3)]
+
+    sizes = [int(parse_qs(urlsplit(url).query)["contentLength"][0]) for url in urls]
+    assert sizes == [5 * mib, 5 * mib, 2 * mib]
