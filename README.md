@@ -20,8 +20,8 @@ information extraction), and querying them in natural language.
   is provided by RustFS ([ADR 0002](docs/adr/0002-local-s3-emulator-rustfs.md)). AWS
   resources are managed with Terraform in [`infra/`](infra/README.md)
   ([ADR 0003](docs/adr/0003-aws-foundation-stage-1.md)).
-- Design conventions follow [`agent-guides/`](agent-guides/AGENTS.md). Deviations are
-  recorded in `docs/adr/`.
+- Design conventions follow the team's internal engineering guides, kept outside this
+  repository. Deviations are recorded in `docs/adr/`.
 
 ```
 src/audio_platform/
