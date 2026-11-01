@@ -83,3 +83,10 @@ def test_upload_limits_must_fit_s3_part_count() -> None:
                 "part_size_bytes": 5 * 1024**2,
             }
         )
+
+
+def test_message_handling_must_outlive_the_analysis_limit() -> None:
+    with pytest.raises(ValidationError, match="handler_timeout_s"):
+        make_settings(
+            messaging={"handler_timeout_s": 600}, processing={"analysis_timeout_s": 600}
+        )

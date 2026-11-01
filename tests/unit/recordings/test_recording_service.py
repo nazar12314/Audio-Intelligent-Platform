@@ -408,3 +408,41 @@ async def test_each_part_url_is_signed_for_that_parts_size(
 
     sizes = [int(parse_qs(urlsplit(url).query)["contentLength"][0]) for url in urls]
     assert sizes == [5 * mib, 5 * mib, 2 * mib]
+
+
+async def test_a_verified_upload_publishes_an_event_for_processing(
+    service: RecordingService,
+    recordings_store: InMemoryRecordingStore,
+    fake_storage: FakeAudioObjectStorage,
+) -> None:
+    recording_id = await _register(service)
+    await service.complete(
+        OWNER, recording_id, await _upload(service, fake_storage, recording_id)
+    )
+
+    [(destination, event)] = recordings_store.outbox
+    stored = recordings_store.rows[recording_id]
+    assert (destination, event.type) == (
+        "pipeline-events",
+        "recordings.recording.uploaded",
+    )
+    assert event.data == {
+        "recording_id": str(recording_id),
+        "owner_id": str(OWNER),
+        "object_key": stored.object_key,
+        "content_type": "audio/mpeg",
+        "size_bytes": len(AUDIO),
+    }
+
+
+async def test_a_failed_upload_publishes_nothing(
+    service: RecordingService,
+    recordings_store: InMemoryRecordingStore,
+    fake_storage: FakeAudioObjectStorage,
+) -> None:
+    recording_id = await _register(service, size=len(AUDIO) + 1)
+    parts = await _upload(service, fake_storage, recording_id, enforce_length=False)
+
+    await service.complete(OWNER, recording_id, parts)
+
+    assert recordings_store.outbox == []

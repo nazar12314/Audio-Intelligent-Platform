@@ -47,6 +47,19 @@ A missing or malformed header returns `401`.
 already stored for it.
 `GET /api/v1/recordings/{id}` returns the recording and its status.
 
+## Processing
+
+After a successful `complete`, the recording is processed asynchronously.
+`GET /api/v1/recordings/{id}/processing` returns the job (`404` until it exists, which
+is usually within a second or two):
+
+- `status`: `running`, `completed` or `failed` (with `failure_reason`).
+- `speech_detected`: set when VAD has finished.
+- `stages`: per stage `status` (`pending`, `running`, `succeeded`, `failed`), `attempts`
+  and the last `error`.
+- `vad`: once VAD succeeded, `duration_ms`, `speech_ms`, `speech_ratio` and `segments`
+  (`[{start_ms, end_ms}]`, times in the original recording).
+
 ## Listing and downloading
 
 - `GET /api/v1/recordings?limit=20&cursor=…` lists your recordings, newest first. Pass
@@ -73,3 +86,16 @@ Every error uses one envelope:
 | 409 | `conflict` | Operation does not fit the status (e.g. upload URL after abort) |
 | 422 | `validation_failed` | Bad input, unsupported type, too large, wrong part list or ETag |
 | 503 | `dependency_unavailable` | Database or storage unreachable; retry later |
+
+## Events
+
+Messages use one envelope: `{"id", "type", "version", "occurred_at", "correlation_id",
+"data"}`. `correlation_id` is the request ID that started the chain. Consumers
+deduplicate by checking recorded state, because delivery is at least once.
+
+| Type (v1) | Producer → consumer | Queue | `data` |
+|---|---|---|---|
+| `recordings.recording.uploaded` | API (`complete`) → coordinator | pipeline-events | `recording_id`, `owner_id`, `object_key`, `content_type`, `size_bytes` |
+| `processing.vad.requested` | coordinator → VAD workers | vad-tasks | `job_id` |
+| `processing.vad.completed` | VAD worker → coordinator | pipeline-events | `job_id`, `speech_detected` |
+| `processing.vad.failed` | VAD worker → coordinator | pipeline-events | `job_id`, `error` |

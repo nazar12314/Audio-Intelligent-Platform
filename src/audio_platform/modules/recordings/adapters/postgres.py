@@ -27,6 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from audio_platform.core.exceptions import ConflictError, DependencyUnavailable
 from audio_platform.infrastructure.db import TimestampedModel
+from audio_platform.infrastructure.db.outbox import SqlOutbox
 from audio_platform.modules.recordings.domain import Recording, RecordingStatus
 
 _STATUSES = ", ".join(f"'{s.value}'" for s in RecordingStatus)
@@ -157,6 +158,7 @@ class PostgresRecordingRepository:
 
 class SqlRecordingUnitOfWork:
     recordings: PostgresRecordingRepository
+    outbox: SqlOutbox
     _session: AsyncSession
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
@@ -165,6 +167,7 @@ class SqlRecordingUnitOfWork:
     async def __aenter__(self) -> Self:
         self._session = self._sessions()
         self.recordings = PostgresRecordingRepository(self._session)
+        self.outbox = SqlOutbox(self._session)
         return self
 
     async def __aexit__(

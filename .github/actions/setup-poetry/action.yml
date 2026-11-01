@@ -16,4 +16,4 @@ runs:
         path: .venv
         key: venv-${{ runner.os }}-py${{ steps.python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
     - shell: bash
-      run: poetry sync
+      run: poetry sync --all-extras

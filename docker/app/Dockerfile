@@ -10,11 +10,13 @@ WORKDIR /app
 # Keep in sync with .pre-commit-config.yaml and CI.
 RUN pip install "poetry==2.4.1"
 COPY pyproject.toml poetry.lock README.md ./
+# Optional extras, e.g. POETRY_EXTRAS=processing for the audio workers.
+ARG POETRY_EXTRAS=""
 # Dependency layer: cached until the lock file changes.
-RUN poetry install --only main --no-root
+RUN poetry install --only main --no-root ${POETRY_EXTRAS:+--extras "$POETRY_EXTRAS"}
 COPY src ./src
 # Installs the project itself into .venv.
-RUN poetry install --only main
+RUN poetry install --only main ${POETRY_EXTRAS:+--extras "$POETRY_EXTRAS"}
 
 FROM ${PYTHON_IMAGE} AS runtime
 ENV PYTHONUNBUFFERED=1 \
@@ -28,5 +30,5 @@ COPY --chown=app alembic.ini ./
 COPY --chown=app migrations ./migrations
 USER app
 EXPOSE 8000
-# Same image for every process: `audio-platform-api`, `alembic upgrade head`.
+# Every process type: `audio-platform-api`, `audio-platform-worker <role>`, `alembic upgrade head`.
 CMD ["audio-platform-api"]

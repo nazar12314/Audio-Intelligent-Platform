@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help setup install env hooks run lint format typecheck test test-integration cov \
-        migrate migration migrations-check infra-up up down logs clean \
+        migrate migration migrations-check worker-pipeline worker-vad infra-up up down logs clean \
         aws-login tf-bootstrap tf-init tf-plan tf-apply tf-app-env tf-fmt tf-lint \
         db-shell db-stats
 
@@ -11,7 +11,7 @@ setup: install env hooks  ## First-time local setup
 
 install:          ## Install deps from the lock file
 	@echo "→ installing dependencies from poetry.lock"
-	poetry sync
+	poetry sync --all-extras
 
 env:              ## Create .env from .env.example (never overwrites)
 	@test -f .env && echo "→ .env exists, leaving it untouched" || (cp .env.example .env && echo "→ .env created: fill in the blank secrets")
@@ -24,6 +24,12 @@ run:              ## Run the API on the host with hot reload (needs `make infra-
 	@echo "→ starting API on http://localhost:8000"
 	@# --env-file also exports .env to the process, so the AWS SDK's credential chain sees AWS_* keys.
 	poetry run uvicorn audio_platform.entrypoints.api:app_factory --factory --reload --env-file .env
+
+worker-pipeline:  ## Run the outbox relay + pipeline coordinator on the host
+	poetry run audio-platform-worker pipeline
+
+worker-vad:       ## Run a VAD worker on the host (start more for parallelism)
+	poetry run audio-platform-worker vad
 
 lint:             ## Check lint + format (no changes)
 	@echo "→ ruff check + format check"
@@ -70,9 +76,9 @@ migrations-check: ## Fail unless migrations have exactly one head
 	@test "$$(poetry run alembic heads | wc -l | tr -d ' ')" = "1" \
 		|| (echo "expected exactly one alembic head:"; poetry run alembic heads; exit 1)
 
-infra-up: env     ## Start only infrastructure (Postgres, RustFS), create the bucket, apply migrations
-	@echo "→ starting postgres + rustfs"
-	docker compose up -d --wait postgres rustfs
+infra-up: env     ## Start only infrastructure (Postgres, RustFS, ElasticMQ), bucket, migrations
+	@echo "→ starting postgres + rustfs + elasticmq"
+	docker compose up -d --wait postgres rustfs elasticmq
 	@# One-shot services run via `compose run`: `up --wait` treats their normal exit as a failure.
 	@echo "→ creating bucket + applying migrations"
 	docker compose run --rm s3-init

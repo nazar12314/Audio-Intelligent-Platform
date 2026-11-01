@@ -8,6 +8,7 @@ from typing import Self
 from urllib.parse import parse_qs, urlsplit
 
 from audio_platform.core.exceptions import ConflictError
+from audio_platform.core.messaging import Event
 from audio_platform.modules.recordings.domain import (
     Recording,
     StoredObject,
@@ -61,11 +62,20 @@ class InMemoryRecordingRepository:
             self._rows[recording.id] = copy.deepcopy(recording)
 
 
+class InMemoryOutbox:
+    def __init__(self, pending: list[tuple[str, Event]]) -> None:
+        self._pending = pending
+
+    async def add(self, event: Event, *, destination: str) -> None:
+        self._pending.append((destination, event))
+
+
 class InMemoryRecordingStore:
     """Committed state shared by every unit of work, like a database."""
 
     def __init__(self) -> None:
         self.rows: dict[uuid.UUID, Recording] = {}
+        self.outbox: list[tuple[str, Event]] = []
         self.fail_next_commit: Exception | None = None
         self.open_transactions = 0
 
@@ -82,9 +92,14 @@ class InMemoryUnitOfWork:
     def recordings(self) -> InMemoryRecordingRepository:
         return self._repository
 
+    @property
+    def outbox(self) -> InMemoryOutbox:
+        return InMemoryOutbox(self._pending_events)
+
     async def __aenter__(self) -> Self:
         self._store.open_transactions += 1
         self._working = copy.deepcopy(self._store.rows)
+        self._pending_events: list[tuple[str, Event]] = []
         self._repository = InMemoryRecordingRepository(self._working)
         return self
 
@@ -102,6 +117,7 @@ class InMemoryUnitOfWork:
             self._store.fail_next_commit = None
             raise error
         self._store.rows = copy.deepcopy(self._working)
+        self._store.outbox.extend(self._pending_events)
 
 
 @dataclass

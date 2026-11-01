@@ -11,6 +11,7 @@ from audio_platform.core.exceptions import (
     ValidationFailed,
 )
 from audio_platform.core.logging import LogEvent, get_logger
+from audio_platform.core.messaging import Destinations, Event
 from audio_platform.modules.recordings.domain import (
     InvalidPartList,
     Recording,
@@ -36,6 +37,19 @@ logger = get_logger(__name__)
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _uploaded_event(recording: Recording) -> Event:
+    return Event.new(
+        "recordings.recording.uploaded",
+        {
+            "recording_id": str(recording.id),
+            "owner_id": str(recording.owner_id),
+            "object_key": recording.object_key,
+            "content_type": recording.content_type,
+            "size_bytes": recording.size_bytes,
+        },
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +216,11 @@ class RecordingService:
             if still_pending:
                 uploaded = self._verify(recording, stored)
                 await uow.recordings.update(recording)
+                if uploaded:
+                    await uow.outbox.add(
+                        _uploaded_event(recording),
+                        destination=Destinations.PIPELINE_EVENTS,
+                    )
                 await uow.commit()
 
         if not still_pending:
