@@ -31,3 +31,6 @@ crash.*.log
 *.tfvars
 !*.tfvars.example
 backend.hcl
+
+# Private, maintained in a separate repository
+agent-guides/
