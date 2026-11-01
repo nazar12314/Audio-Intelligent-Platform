@@ -2,10 +2,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_MIB = 1024 * 1024
+_S3_MAX_PARTS = 10_000
 
 
 class ApiSettings(BaseModel):
@@ -44,6 +46,41 @@ class AwsSettings(BaseModel):
 
 class StorageSettings(BaseModel):
     bucket: str = Field(min_length=3, max_length=63)
+    # Host that clients use for presigned URLs when it differs from aws.endpoint_url
+    # (docker compose: the API reaches rustfs:9000, browsers reach localhost:9000).
+    public_endpoint_url: str | None = None
+
+
+class UploadSettings(BaseModel):
+    max_size_bytes: int = Field(default=2 * 1024 * _MIB, gt=0)
+    part_size_bytes: int = Field(default=16 * _MIB, ge=5 * _MIB, le=5 * 1024 * _MIB)
+    # Presigned URLs stop working when the signing credentials expire (1 h sessions).
+    url_ttl_s: int = Field(default=900, ge=60, le=3600)
+    allowed_content_types: list[str] = [
+        "audio/aac",
+        "audio/flac",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
+        "audio/wave",
+        "audio/webm",
+        "audio/x-flac",
+        "audio/x-m4a",
+        "audio/x-wav",
+    ]
+
+    @model_validator(mode="after")
+    def _fits_s3_part_limit(self) -> UploadSettings:
+        if -(-self.max_size_bytes // self.part_size_bytes) > _S3_MAX_PARTS:
+            raise ValueError(
+                f"max_size_bytes / part_size_bytes exceeds {_S3_MAX_PARTS} parts"
+            )
+        return self
+
+
+class AuthSettings(BaseModel):
+    mode: Literal["dev_header"] = "dev_header"
 
 
 class Settings(BaseSettings):
@@ -57,6 +94,8 @@ class Settings(BaseSettings):
     postgres: PostgresSettings
     aws: AwsSettings = AwsSettings()
     storage: StorageSettings
+    upload: UploadSettings = UploadSettings()
+    auth: AuthSettings = AuthSettings()
 
     model_config = SettingsConfigDict(
         env_prefix="AUDIO_",
@@ -65,6 +104,14 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _no_dev_auth_in_prod(self) -> Settings:
+        if self.env == "prod" and self.auth.mode == "dev_header":
+            raise ValueError(
+                "auth.mode 'dev_header' trusts a client header: not for prod"
+            )
+        return self
 
     @property
     def docs_enabled(self) -> bool:

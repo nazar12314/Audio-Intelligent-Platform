@@ -2,7 +2,16 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from audio_platform.core.config import Settings
 from audio_platform.core.exceptions import ConflictError
+from tests.conftest import make_settings
+
+ORIGIN = "http://localhost:5173"
+
+
+@pytest.fixture
+def settings() -> Settings:
+    return make_settings(api={"cors_origins": [ORIGIN]})
 
 
 @pytest.fixture
@@ -80,3 +89,13 @@ async def test_unhandled_error_returns_generic_500_with_request_id(
         "request_id": "req-500",
     }
     assert "secret internals" not in response.text
+
+
+async def test_unhandled_error_still_carries_cors_headers(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.get("/test/boom", headers={"Origin": ORIGIN})
+
+    assert response.status_code == 500
+    assert response.headers["access-control-allow-origin"] == ORIGIN
+    assert response.json()["error"]["code"] == "internal_error"

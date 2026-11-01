@@ -16,7 +16,9 @@ if TYPE_CHECKING:
 
 
 @asynccontextmanager
-async def s3_client(settings: AwsSettings) -> AsyncIterator[S3Client]:
+async def s3_client(
+    settings: AwsSettings, *, endpoint_url: str | None = None
+) -> AsyncIterator[S3Client]:
     """
     One client per process, reused for every call; closed on exit. Connects lazily.
     """
@@ -29,7 +31,7 @@ async def s3_client(settings: AwsSettings) -> AsyncIterator[S3Client]:
     )
     session = aioboto3.Session(region_name=settings.region)
     async with session.client(
-        "s3", endpoint_url=settings.endpoint_url, config=config
+        "s3", endpoint_url=endpoint_url or settings.endpoint_url, config=config
     ) as client:
         yield client
 

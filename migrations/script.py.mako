@@ -22,5 +22,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Every migration must have a working downgrade (tested by upgrade -> downgrade -> upgrade).
     ${downgrades if downgrades else "pass"}

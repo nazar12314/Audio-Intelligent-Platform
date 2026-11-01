@@ -12,6 +12,7 @@ x-app: &app
     AUDIO_POSTGRES__DSN: postgresql+asyncpg://app:app@postgres:5432/audio_platform
     AUDIO_AWS__ENDPOINT_URL: http://rustfs:9000
     AUDIO_AWS__S3_ADDRESSING_STYLE: path
+    AUDIO_STORAGE__PUBLIC_ENDPOINT_URL: http://localhost:${S3_HOST_PORT:-9000}
     AWS_ACCESS_KEY_ID: *dev-s3-access-key
     AWS_SECRET_ACCESS_KEY: *dev-s3-secret-key
   restart: unless-stopped
@@ -63,7 +64,7 @@ services:
     healthcheck: { test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"], interval: 5s, timeout: 3s, retries: 10 }
     networks: [backend]
 
-  s3-init: # one-shot: create the recordings bucket (on AWS the bucket comes from IaC)
+  s3-init: # one-shot: bucket + browser CORS (on AWS both come from Terraform)
     image: amazon/aws-cli:2.39.3
     environment:
       AWS_ACCESS_KEY_ID: *dev-s3-access-key
@@ -71,8 +72,16 @@ services:
       AWS_DEFAULT_REGION: us-east-1
       AWS_ENDPOINT_URL: http://rustfs:9000
       BUCKET: ${AUDIO_STORAGE__BUCKET:?set AUDIO_STORAGE__BUCKET in .env}
+      CORS: >-
+        {"CORSRules": [{"AllowedOrigins": ["http://localhost:5173"],
+        "AllowedMethods": ["PUT", "GET", "HEAD"], "AllowedHeaders": ["*"],
+        "ExposeHeaders": ["ETag"], "MaxAgeSeconds": 3000}]}
     entrypoint: ["/bin/sh", "-c"]
-    command: ['aws s3api head-bucket --bucket "$$BUCKET" 2>/dev/null || aws s3api create-bucket --bucket "$$BUCKET"']
+    command:
+      - >-
+        (aws s3api head-bucket --bucket "$$BUCKET" 2>/dev/null
+        || aws s3api create-bucket --bucket "$$BUCKET")
+        && aws s3api put-bucket-cors --bucket "$$BUCKET" --cors-configuration "$$CORS"
     restart: "no"
     depends_on:
       rustfs: { condition: service_healthy }

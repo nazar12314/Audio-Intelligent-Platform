@@ -27,6 +27,7 @@ jobs:
       - run: poetry run ruff check .
       - run: poetry run ruff format --check .
       - run: poetry run mypy
+      - run: make migrations-check
 
   test:
     runs-on: ubuntu-latest # Docker is available for testcontainers

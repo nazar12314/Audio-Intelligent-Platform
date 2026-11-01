@@ -5,5 +5,12 @@ from audio_platform.modules.recordings.ports import (
     AudioObjectStorage,
     RecordingRepository,
 )
+from audio_platform.modules.recordings.services import RecordingService
 
-__all__ = ["AudioObjectStorage", "Recording", "RecordingRepository", "RecordingStatus"]
+__all__ = [
+    "AudioObjectStorage",
+    "Recording",
+    "RecordingRepository",
+    "RecordingService",
+    "RecordingStatus",
+]

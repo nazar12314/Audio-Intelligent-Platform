@@ -63,6 +63,23 @@ def test_dsn_is_not_exposed_in_repr() -> None:
 def test_docs_enabled_defaults_to_off_only_in_prod(
     env: str, explicit: bool | None, expected: bool
 ) -> None:
-    assert (
-        make_settings(env=env, api={"docs_enabled": explicit}).docs_enabled is expected
+    # model_copy skips validation: prod settings are refused while auth is a dev stub.
+    settings = make_settings(api={"docs_enabled": explicit}).model_copy(
+        update={"env": env}
     )
+    assert settings.docs_enabled is expected
+
+
+def test_dev_header_auth_is_refused_in_prod() -> None:
+    with pytest.raises(ValidationError, match="dev_header"):
+        make_settings(env="prod")
+
+
+def test_upload_limits_must_fit_s3_part_count() -> None:
+    with pytest.raises(ValidationError, match="10000 parts"):
+        make_settings(
+            upload={
+                "max_size_bytes": 10_001 * 5 * 1024**2,
+                "part_size_bytes": 5 * 1024**2,
+            }
+        )

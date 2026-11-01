@@ -1,5 +1,6 @@
 """Recording aggregate: an uploaded audio file and its ingestion lifecycle (Stage 1)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -29,6 +30,10 @@ class InvalidStatusTransition(Exception):
         self.current, self.target = current, target
 
 
+class InvalidPartList(Exception):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class UploadedPart:
     part_number: int
@@ -40,6 +45,7 @@ class StoredObject:
     size_bytes: int
     content_type: str | None
     etag: str
+    version_id: str | None = None
 
 
 def object_key_for(owner_id: UUID, recording_id: UUID) -> str:
@@ -57,6 +63,7 @@ class Recording:
     filename: str
     content_type: str
     size_bytes: int  # declared by the client at registration; verified after upload
+    part_size_bytes: int
     object_key: str
     status: RecordingStatus
     created_at: datetime
@@ -75,6 +82,7 @@ class Recording:
         filename: str,
         content_type: str,
         size_bytes: int,
+        part_size_bytes: int,
         now: datetime,
     ) -> Recording:
         return cls(
@@ -83,11 +91,29 @@ class Recording:
             filename=filename,
             content_type=content_type,
             size_bytes=size_bytes,
+            part_size_bytes=part_size_bytes,
             object_key=object_key_for(owner_id, recording_id),
             status=RecordingStatus.PENDING_UPLOAD,
             created_at=now,
             updated_at=now,
         )
+
+    @property
+    def part_count(self) -> int:
+        return max(1, -(-self.size_bytes // self.part_size_bytes))
+
+    def check_part_number(self, part_number: int) -> None:
+        if not 1 <= part_number <= self.part_count:
+            raise InvalidPartList(
+                f"part_number must be between 1 and {self.part_count}"
+            )
+
+    def check_completed_parts(self, parts: Sequence[UploadedPart]) -> None:
+        numbers = sorted(p.part_number for p in parts)
+        if numbers != list(range(1, self.part_count + 1)):
+            raise InvalidPartList(
+                f"expected each of parts 1..{self.part_count} exactly once"
+            )
 
     def attach_upload(self, upload_id: str, *, now: datetime) -> None:
         self._require(RecordingStatus.PENDING_UPLOAD)

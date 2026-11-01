@@ -10,6 +10,7 @@ from audio_platform.api.middleware import install_middleware
 from audio_platform.core.config import Settings, get_settings
 from audio_platform.core.container import Container, build_container
 from audio_platform.core.logging import LogEvent, get_logger
+from audio_platform.modules.recordings.api import recordings_router
 
 ContainerFactory = Callable[[Settings], Awaitable[Container]]
 
@@ -21,7 +22,7 @@ def build_api_router() -> APIRouter:
     router.include_router(health_router)
 
     v1 = APIRouter(prefix="/api/v1")
-
+    v1.include_router(recordings_router)
     router.include_router(v1)
     return router
 

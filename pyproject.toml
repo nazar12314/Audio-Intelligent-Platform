@@ -23,13 +23,13 @@ audio-platform-api = "audio_platform.entrypoints.api:main"
 packages = [{ include = "audio_platform", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
-ruff = "0.17.3"                                   
+ruff = "0.17.3"
 mypy = "^2.4.1"
 types-aioboto3 = { version = "^15.5.0", extras = ["s3"] }
 pytest = "^9.2.0"
 pytest-asyncio = "^1.4.1"
 pytest-cov = "^7.1.0"
-httpx = "^0.28.1"                                 
+httpx = "^0.28.1"
 testcontainers = { version = "^4.15.0", extras = ["postgres"] }
 pre-commit = "^4.7.0"
 pip-audit = "^2.10.1"
@@ -89,7 +89,7 @@ module = "tests.*"
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*"]
+module = ["testcontainers.*", "boto3.*"]
 ignore_missing_imports = true
 
 

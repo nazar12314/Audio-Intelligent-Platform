@@ -7,9 +7,13 @@ import pytest
 from fastapi import FastAPI
 
 from audio_platform.api import create_app
+from audio_platform.core.auth import DevHeaderAuthenticator
 from audio_platform.core.config import Settings
 from audio_platform.core.container import Container
 from audio_platform.core.health import HealthCheck
+from audio_platform.modules.recordings.domain import UploadPolicy
+from audio_platform.modules.recordings.services import RecordingService
+from tests.fakes.recordings import FakeAudioObjectStorage, InMemoryRecordingStore
 
 TEST_DSN = "postgresql+asyncpg://test:test@localhost:5432/test"
 
@@ -37,11 +41,50 @@ def health_checks() -> list[HealthCheck]:
     return []
 
 
+def make_recording_service(
+    settings: Settings,
+    store: InMemoryRecordingStore,
+    storage: FakeAudioObjectStorage,
+    **kwargs: Any,
+) -> RecordingService:
+    upload = settings.upload
+    return RecordingService(
+        uow=store.unit_of_work,
+        storage=storage,
+        policy=UploadPolicy(
+            max_size_bytes=upload.max_size_bytes,
+            part_size_bytes=upload.part_size_bytes,
+            allowed_content_types=frozenset(upload.allowed_content_types),
+        ),
+        url_ttl_s=upload.url_ttl_s,
+        **kwargs,
+    )
+
+
 @pytest.fixture
-def app(settings: Settings, health_checks: list[HealthCheck]) -> FastAPI:
+def recordings_store() -> InMemoryRecordingStore:
+    return InMemoryRecordingStore()
+
+
+@pytest.fixture
+def fake_storage() -> FakeAudioObjectStorage:
+    return FakeAudioObjectStorage()
+
+
+@pytest.fixture
+def app(
+    settings: Settings,
+    health_checks: list[HealthCheck],
+    recordings_store: InMemoryRecordingStore,
+    fake_storage: FakeAudioObjectStorage,
+) -> FastAPI:
     async def fake_container(s: Settings) -> Container:
         return Container(
-            settings=s, resources=AsyncExitStack(), health_checks=tuple(health_checks)
+            settings=s,
+            resources=AsyncExitStack(),
+            health_checks=tuple(health_checks),
+            authenticator=DevHeaderAuthenticator(),
+            recording_service=make_recording_service(s, recordings_store, fake_storage),
         )
 
     return create_app(settings, container_factory=fake_container)

@@ -76,6 +76,9 @@ class RequestContextMiddleware:
 
 
 def install_middleware(app: FastAPI, settings: Settings) -> None:
+    app.add_middleware(RequestContextMiddleware)
+    # Added last = outermost, so 500s rendered by RequestContextMiddleware get CORS
+    # headers too; otherwise browsers hide the error body behind a CORS error.
     if settings.api.cors_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -85,4 +88,3 @@ def install_middleware(app: FastAPI, settings: Settings) -> None:
             allow_headers=["*"],
             expose_headers=[REQUEST_ID_HEADER],
         )
-    app.add_middleware(RequestContextMiddleware)

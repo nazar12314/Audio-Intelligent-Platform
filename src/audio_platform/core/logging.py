@@ -22,6 +22,11 @@ class LogEvent(StrEnum):
     HTTP_REQUEST_COMPLETED = "http.request.completed"
     HTTP_UNHANDLED_ERROR = "http.unhandled_error"
     HEALTH_CHECK_FAILED = "health.check_failed"
+    RECORDING_REGISTERED = "recordings.recording.registered"
+    RECORDING_UPLOADED = "recordings.recording.uploaded"
+    RECORDING_UPLOAD_FAILED = "recordings.recording.upload_failed"
+    RECORDING_ABORTED = "recordings.recording.aborted"
+    RECORDING_OBJECT_CLEANUP_FAILED = "recordings.object.cleanup_failed"
 
 
 _SENSITIVE_KEY = re.compile(
