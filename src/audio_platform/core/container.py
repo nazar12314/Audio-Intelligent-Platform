@@ -1,5 +1,3 @@
-"""Composition root: the only place where settings choose implementations."""
-
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import partial
@@ -13,18 +11,23 @@ from audio_platform.infrastructure.storage.s3 import ping_bucket, s3_client
 @dataclass(frozen=True, slots=True)
 class Container:
     settings: Settings
-    resources: AsyncExitStack  # every opened client is registered here and closed on shutdown
+    resources: (
+        AsyncExitStack  # every opened client is registered here and closed on shutdown
+    )
     health_checks: tuple[HealthCheck, ...]
-    # Feature services are added here as they are built, e.g. `recording_service: RecordingService`.
+
+    # Feature services are added here
 
 
 async def build_container(settings: Settings) -> Container:
     stack = AsyncExitStack()
     try:
-        engine = await stack.enter_async_context(sql_engine(settings.postgres, application_name=settings.service_name))
+        engine = await stack.enter_async_context(
+            sql_engine(settings.postgres, application_name=settings.service_name)
+        )
         s3 = await stack.enter_async_context(s3_client(settings.aws))
     except BaseException:
-        await stack.aclose()  # close whatever was opened before the failure
+        await stack.aclose()
         raise
 
     health_checks = (

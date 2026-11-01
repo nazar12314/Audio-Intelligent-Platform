@@ -40,7 +40,9 @@ def health_checks() -> list[HealthCheck]:
 @pytest.fixture
 def app(settings: Settings, health_checks: list[HealthCheck]) -> FastAPI:
     async def fake_container(s: Settings) -> Container:
-        return Container(settings=s, resources=AsyncExitStack(), health_checks=tuple(health_checks))
+        return Container(
+            settings=s, resources=AsyncExitStack(), health_checks=tuple(health_checks)
+        )
 
     return create_app(settings, container_factory=fake_container)
 
@@ -49,7 +51,9 @@ def app(settings: Settings, health_checks: list[HealthCheck]) -> FastAPI:
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     async with (
         app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client,
     ):
         yield client
 

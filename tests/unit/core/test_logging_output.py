@@ -23,10 +23,16 @@ def restore_logging() -> Iterator[None]:
 def test_json_log_line_carries_context_and_redacts_secrets(
     restore_logging: None, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    configure_logging(make_settings(log_format="json"))  # in the test body: capsys swaps sys.stdout only here
+    configure_logging(
+        make_settings(log_format="json")
+    )  # in the test body: capsys swaps sys.stdout only here
     structlog.contextvars.bind_contextvars(request_id="req-42")
 
-    get_logger("test").info(LogEvent.APP_STARTING, dsn="postgresql+asyncpg://u:p@db/x", note="https://a:b@host/")
+    get_logger("test").info(
+        LogEvent.APP_STARTING,
+        dsn="postgresql+asyncpg://u:p@db/x",
+        note="https://a:b@host/",
+    )
 
     line = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert line["event"] == "app.starting"
@@ -36,12 +42,18 @@ def test_json_log_line_carries_context_and_redacts_secrets(
     assert line["note"] == "https://***@host/"
 
 
-def test_stdlib_loggers_go_through_the_same_pipeline(restore_logging: None, capsys: pytest.CaptureFixture[str]) -> None:
+def test_stdlib_loggers_go_through_the_same_pipeline(
+    restore_logging: None, capsys: pytest.CaptureFixture[str]
+) -> None:
     configure_logging(make_settings(log_format="json"))
     logging.getLogger("sqlalchemy.engine").warning("pool exhausted")
 
     line = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert (line["event"], line["logger"], line["level"]) == ("pool exhausted", "sqlalchemy.engine", "warning")
+    assert (line["event"], line["logger"], line["level"]) == (
+        "pool exhausted",
+        "sqlalchemy.engine",
+        "warning",
+    )
 
 
 SECRET_DSN = "postgresql+asyncpg://app:Sup3rSecret@db:5432/x"
@@ -69,7 +81,9 @@ def test_exception_logs_never_contain_secrets_from_locals_or_messages(
     assert "_fail_with_secret_in_locals_and_message" in out
 
 
-def test_stdlib_exception_logs_are_redacted_too(restore_logging: None, capsys: pytest.CaptureFixture[str]) -> None:
+def test_stdlib_exception_logs_are_redacted_too(
+    restore_logging: None, capsys: pytest.CaptureFixture[str]
+) -> None:
     configure_logging(make_settings(log_format="json"))
 
     try:

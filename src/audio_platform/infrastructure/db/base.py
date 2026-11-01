@@ -1,4 +1,6 @@
-"""Declarative base shared by every ORM model. ORM models stay private to adapters."""
+"""
+Declarative base shared by every ORM model. ORM models stay private to adapters.
+"""
 
 import uuid
 from datetime import UTC, datetime
@@ -25,10 +27,16 @@ class Base(DeclarativeBase):
 
 
 class TimestampedModel(Base):
-    """Abstract base: app-generated UUIDv7 primary key plus timezone-aware UTC timestamps."""
+    """
+    Abstract base: app-generated UUIDv7 primary key plus timezone-aware UTC timestamps.
+    """
 
     __abstract__ = True
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

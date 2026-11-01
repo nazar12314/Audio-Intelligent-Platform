@@ -10,11 +10,9 @@ dependencies = [
     "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
     "structlog>=26.1.0",
-    # PostgreSQL: system of record for recording metadata
     "sqlalchemy[asyncio]>=2.1.6",
     "asyncpg>=0.32.0",
     "alembic>=1.20.1",
-    # S3: audio object storage (multipart uploads, presigned URLs)
     "aioboto3>=15.5.0",
 ]
 
@@ -25,13 +23,13 @@ audio-platform-api = "audio_platform.entrypoints.api:main"
 packages = [{ include = "audio_platform", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
-ruff = "0.17.3"                                   # keep in sync with .pre-commit-config.yaml and CI
+ruff = "0.17.3"                                   
 mypy = "^2.4.1"
 types-aioboto3 = { version = "^15.5.0", extras = ["s3"] }
 pytest = "^9.2.0"
 pytest-asyncio = "^1.4.1"
 pytest-cov = "^7.1.0"
-httpx = "^0.28.1"                                 # ASGI test client
+httpx = "^0.28.1"                                 
 testcontainers = { version = "^4.15.0", extras = ["postgres"] }
 pre-commit = "^4.7.0"
 pip-audit = "^2.10.1"
@@ -41,12 +39,12 @@ python-semantic-release = "^10.7.0"
 requires = ["poetry-core>=2.0"]
 build-backend = "poetry.core.masonry.api"
 
-# ── Ruff ─────────────────────────────────────────────────────────────────────
+
 [tool.ruff]
 target-version = "py314"
-line-length = 120
+line-length = 88
 src = ["src", "tests"]
-extend-exclude = ["migrations", "agent-guides"] # agent-guides: vendored docs (ruff also formats code blocks in Markdown)
+extend-exclude = ["migrations", "agent-guides"]
 force-exclude = true
 
 [tool.ruff.lint]
@@ -78,7 +76,7 @@ known-first-party = ["audio_platform"]
 quote-style = "double"
 docstring-code-format = true
 
-# ── mypy ─────────────────────────────────────────────────────────────────────
+
 [tool.mypy]
 python_version = "3.14"
 strict = true
@@ -94,7 +92,7 @@ disallow_untyped_defs = false
 module = ["testcontainers.*"]
 ignore_missing_imports = true
 
-# ── pytest / coverage ────────────────────────────────────────────────────────
+
 [tool.pytest.ini_options]
 addopts = "-ra -q --tb=short --strict-markers"
 testpaths = ["tests"]
@@ -112,7 +110,7 @@ branch = true
 fail_under = 80
 show_missing = true
 
-# ── Releases ─────────────────────────────────────────────────────────────────
+
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
 tag_format = "v{version}"

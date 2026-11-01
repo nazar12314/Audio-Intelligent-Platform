@@ -1,5 +1,3 @@
-"""HTTP middleware: request ID propagation, access logging, last-resort error rendering, CORS."""
-
 import re
 import time
 import uuid
@@ -15,13 +13,16 @@ from audio_platform.core.config import Settings
 from audio_platform.core.logging import LogEvent, get_logger
 
 REQUEST_ID_HEADER = "X-Request-ID"
-_VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")  # never trust arbitrary header content in logs
+_VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 logger = get_logger(__name__)
 
 
 class RequestContextMiddleware:
-    """Pure ASGI middleware (no BaseHTTPMiddleware) so streaming responses are not buffered."""
+    """
+    Pure ASGI middleware (no BaseHTTPMiddleware) so streaming responses are not
+    buffered.
+    """
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -32,7 +33,11 @@ class RequestContextMiddleware:
             return
 
         incoming = Headers(scope=scope).get(REQUEST_ID_HEADER)
-        request_id = incoming if incoming and _VALID_REQUEST_ID.match(incoming) else uuid.uuid7().hex
+        request_id = (
+            incoming
+            if incoming and _VALID_REQUEST_ID.match(incoming)
+            else uuid.uuid7().hex
+        )
         scope.setdefault("state", {})["request_id"] = request_id
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
@@ -55,7 +60,9 @@ class RequestContextMiddleware:
             logger.exception(LogEvent.HTTP_UNHANDLED_ERROR)
             if response_started:
                 raise
-            response = error_response(500, "internal_error", "Internal server error", request_id)
+            response = error_response(
+                500, "internal_error", "Internal server error", request_id
+            )
             await response(scope, receive, send_with_request_id)
         finally:
             logger.info(
@@ -69,7 +76,6 @@ class RequestContextMiddleware:
 
 
 def install_middleware(app: FastAPI, settings: Settings) -> None:
-    # Starlette applies the last-added middleware outermost: the request context wraps everything.
     if settings.api.cors_origins:
         app.add_middleware(
             CORSMiddleware,

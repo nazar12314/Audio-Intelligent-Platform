@@ -1,5 +1,3 @@
-"""Small dependency functions: the API's only way to reach the container. Override them in tests."""
-
 from typing import Annotated, cast
 
 from fastapi import Depends, Request

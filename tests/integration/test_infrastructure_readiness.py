@@ -41,12 +41,18 @@ def s3_endpoint() -> Iterator[str]:
 
 
 @pytest.fixture
-def settings(postgres_dsn: str, s3_endpoint: str, monkeypatch: pytest.MonkeyPatch) -> Settings:
+def settings(
+    postgres_dsn: str, s3_endpoint: str, monkeypatch: pytest.MonkeyPatch
+) -> Settings:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", S3_ACCESS_KEY)
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", S3_SECRET_KEY)
     return make_settings(
         postgres={"dsn": postgres_dsn},
-        aws={"endpoint_url": s3_endpoint, "s3_addressing_style": "path", "region": "us-east-1"},
+        aws={
+            "endpoint_url": s3_endpoint,
+            "s3_addressing_style": "path",
+            "region": "us-east-1",
+        },
         storage={"bucket": BUCKET},
     )
 
@@ -60,7 +66,9 @@ async def bucket(settings: Settings) -> AsyncIterator[str]:
     yield BUCKET
 
 
-async def test_readiness_passes_against_real_postgres_and_s3(settings: Settings, bucket: str) -> None:
+async def test_readiness_passes_against_real_postgres_and_s3(
+    settings: Settings, bucket: str
+) -> None:
     container = await build_container(settings)
     async with container.resources:
         report = await run_checks(container.health_checks, timeout_s=5)
@@ -69,7 +77,13 @@ async def test_readiness_passes_against_real_postgres_and_s3(settings: Settings,
 
 async def test_readiness_fails_when_bucket_is_missing(settings: Settings) -> None:
     container = await build_container(
-        settings.model_copy(update={"storage": settings.storage.model_copy(update={"bucket": "missing-bucket"})})
+        settings.model_copy(
+            update={
+                "storage": settings.storage.model_copy(
+                    update={"bucket": "missing-bucket"}
+                )
+            }
+        )
     )
     async with container.resources:
         report = await run_checks(container.health_checks, timeout_s=5)
@@ -77,11 +91,15 @@ async def test_readiness_fails_when_bucket_is_missing(settings: Settings) -> Non
     assert {c.name for c in report.checks if not c.ok} == {"s3"}
 
 
-async def test_ready_endpoint_with_the_real_container(settings: Settings, bucket: str) -> None:
+async def test_ready_endpoint_with_the_real_container(
+    settings: Settings, bucket: str
+) -> None:
     app = create_app(settings)
     async with (
         app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client,
     ):
         response = await client.get("/health/ready")
     assert response.status_code == 200

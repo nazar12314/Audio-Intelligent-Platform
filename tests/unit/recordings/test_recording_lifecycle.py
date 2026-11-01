@@ -4,7 +4,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from audio_platform.modules.recordings.domain import InvalidStatusTransition, Recording, RecordingStatus, object_key_for
+from audio_platform.modules.recordings.domain import (
+    InvalidStatusTransition,
+    Recording,
+    RecordingStatus,
+    object_key_for,
+)
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 OWNER = uuid.UUID("00000000-0000-7000-8000-000000000001")
@@ -13,7 +18,12 @@ REC = uuid.UUID("00000000-0000-7000-8000-000000000002")
 
 def _registered() -> Recording:
     return Recording.register(
-        recording_id=REC, owner_id=OWNER, filename="call.mp3", content_type="audio/mpeg", size_bytes=1024, now=T0
+        recording_id=REC,
+        owner_id=OWNER,
+        filename="call.mp3",
+        content_type="audio/mpeg",
+        size_bytes=1024,
+        now=T0,
     )
 
 
@@ -35,7 +45,12 @@ def test_pending_recording_can_be_marked_uploaded() -> None:
     rec.mark_uploaded(etag='"abc-2"', now=later)
 
     assert rec.status is RecordingStatus.UPLOADED
-    assert (rec.upload_id, rec.etag, rec.uploaded_at, rec.updated_at) == ("upload-1", '"abc-2"', later, later)
+    assert (rec.upload_id, rec.etag, rec.uploaded_at, rec.updated_at) == (
+        "upload-1",
+        '"abc-2"',
+        later,
+        later,
+    )
 
 
 def test_failed_recording_keeps_the_reason() -> None:
@@ -53,7 +68,9 @@ def test_failed_recording_keeps_the_reason() -> None:
     ],
     ids=["uploaded", "aborted", "failed"],
 )
-def test_terminal_states_reject_further_transitions(finish: Callable[[Recording], None]) -> None:
+def test_terminal_states_reject_further_transitions(
+    finish: Callable[[Recording], None],
+) -> None:
     rec = _registered()
     finish(rec)
 

@@ -1,5 +1,3 @@
-"""App factory and lifespan."""
-
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -23,12 +21,16 @@ def build_api_router() -> APIRouter:
     router.include_router(health_router)
 
     v1 = APIRouter(prefix="/api/v1")
-    # Feature routers are mounted here, e.g. `v1.include_router(recordings_router)`.
+
     router.include_router(v1)
     return router
 
 
-def create_app(settings: Settings | None = None, *, container_factory: ContainerFactory = build_container) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    container_factory: ContainerFactory = build_container,
+) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager

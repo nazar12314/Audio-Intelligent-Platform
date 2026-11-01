@@ -7,7 +7,12 @@ from tests.conftest import TEST_DSN, make_settings
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("AUDIO_POSTGRES__DSN", "AUDIO_STORAGE__BUCKET", "AUDIO_ENV", "AUDIO_API__DOCS_ENABLED"):
+    for name in (
+        "AUDIO_POSTGRES__DSN",
+        "AUDIO_STORAGE__BUCKET",
+        "AUDIO_ENV",
+        "AUDIO_API__DOCS_ENABLED",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -48,7 +53,16 @@ def test_dsn_is_not_exposed_in_repr() -> None:
 
 @pytest.mark.parametrize(
     ("env", "explicit", "expected"),
-    [("dev", None, True), ("prod", None, False), ("prod", True, True), ("dev", False, False)],
+    [
+        ("dev", None, True),
+        ("prod", None, False),
+        ("prod", True, True),
+        ("dev", False, False),
+    ],
 )
-def test_docs_enabled_defaults_to_off_only_in_prod(env: str, explicit: bool | None, expected: bool) -> None:
-    assert make_settings(env=env, api={"docs_enabled": explicit}).docs_enabled is expected
+def test_docs_enabled_defaults_to_off_only_in_prod(
+    env: str, explicit: bool | None, expected: bool
+) -> None:
+    assert (
+        make_settings(env=env, api={"docs_enabled": explicit}).docs_enabled is expected
+    )

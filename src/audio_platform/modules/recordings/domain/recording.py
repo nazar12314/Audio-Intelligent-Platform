@@ -43,7 +43,10 @@ class StoredObject:
 
 
 def object_key_for(owner_id: UUID, recording_id: UUID) -> str:
-    """Every user's audio lives under its own prefix; the key never contains client-supplied text."""
+    """
+    Every user's audio lives under its own prefix; the key never contains
+    client-supplied text.
+    """
     return f"users/{owner_id}/recordings/{recording_id}/original"
 
 
@@ -65,7 +68,14 @@ class Recording:
 
     @classmethod
     def register(
-        cls, *, recording_id: UUID, owner_id: UUID, filename: str, content_type: str, size_bytes: int, now: datetime
+        cls,
+        *,
+        recording_id: UUID,
+        owner_id: UUID,
+        filename: str,
+        content_type: str,
+        size_bytes: int,
+        now: datetime,
     ) -> Recording:
         return cls(
             id=recording_id,
