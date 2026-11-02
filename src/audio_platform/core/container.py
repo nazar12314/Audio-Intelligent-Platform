@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections.abc import Callable, Coroutine
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from typing import Any, Literal
 from audio_platform.core.auth import Authenticator, DevHeaderAuthenticator
 from audio_platform.core.config import Settings
 from audio_platform.core.health import HealthCheck
+from audio_platform.core.logging import LogEvent, get_logger
 from audio_platform.core.messaging import Destinations
 from audio_platform.infrastructure.db.outbox import OutboxCleaner, OutboxRelay
 from audio_platform.infrastructure.db.sql import ping, session_factory, sql_engine
@@ -24,11 +26,15 @@ from audio_platform.modules.processing.adapters import (
     SqlProcessingUnitOfWork,
 )
 from audio_platform.modules.processing.consumers import (
+    AsrTasksConsumer,
     PipelineEventsConsumer,
     VadTasksConsumer,
 )
 from audio_platform.modules.processing.domain import VadParameters
+from audio_platform.modules.processing.ports import SpeechTranscriber
 from audio_platform.modules.processing.services import (
+    AsrWorker,
+    AsrWorkerConfig,
     PipelineCoordinator,
     ProcessingQueries,
     VadWorker,
@@ -40,6 +46,8 @@ from audio_platform.modules.recordings.adapters import (
 )
 from audio_platform.modules.recordings.domain import UploadPolicy
 from audio_platform.modules.recordings.services import RecordingService
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +108,7 @@ async def build_container(settings: Settings) -> Container:
     )
 
 
-WorkerRole = Literal["pipeline", "vad"]
+WorkerRole = Literal["pipeline", "vad", "asr"]
 Runner = Callable[[asyncio.Event], Coroutine[Any, Any, None]]
 
 
@@ -112,8 +120,8 @@ class WorkerRuntime:
 
 async def build_worker(settings: Settings, role: WorkerRole) -> WorkerRuntime:
     """
-    `pipeline`: outbox relay + coordinator. `vad`: VAD task consumer, scaled by
-    running more processes.
+    `pipeline`: outbox relay + coordinator. `vad` / `asr`: task consumers, scaled by
+    running more processes. `asr` loads its speech model here, once per process.
     """
     stack = AsyncExitStack()
     try:
@@ -130,6 +138,7 @@ async def build_worker(settings: Settings, role: WorkerRole) -> WorkerRuntime:
             {
                 Destinations.PIPELINE_EVENTS: settings.messaging.pipeline_events_queue,
                 Destinations.VAD_TASKS: settings.messaging.vad_tasks_queue,
+                Destinations.ASR_TASKS: settings.messaging.asr_tasks_queue,
             },
         )
         s3 = await stack.enter_async_context(s3_client(settings.aws))
@@ -144,7 +153,8 @@ async def build_worker(settings: Settings, role: WorkerRole) -> WorkerRuntime:
         return SqlProcessingUnitOfWork(sessions)
 
     def consumer(
-        destination: str, handler: PipelineEventsConsumer | VadTasksConsumer
+        destination: str,
+        handler: PipelineEventsConsumer | VadTasksConsumer | AsrTasksConsumer,
     ) -> Runner:
         return SqsConsumer(
             sqs,
@@ -173,6 +183,21 @@ async def build_worker(settings: Settings, role: WorkerRole) -> WorkerRuntime:
             ).run,
             consumer(Destinations.PIPELINE_EVENTS, PipelineEventsConsumer(coordinator)),
         )
+    elif role == "asr":
+        try:
+            transcriber = await _load_transcriber(settings)
+        except BaseException:
+            await stack.aclose()
+            raise
+        asr_worker = AsrWorker(
+            uow,
+            S3ArtifactStorage(s3, settings.storage.bucket),
+            transcriber,
+            AsrWorkerConfig(
+                model=settings.asr.model, max_attempts=messaging.max_attempts
+            ),
+        )
+        runners = (consumer(Destinations.ASR_TASKS, AsrTasksConsumer(asr_worker)),)
     else:
         # The child process imports the heavy `processing` extra, not the worker.
         from audio_platform.modules.processing.adapters.analyzer import (
@@ -196,4 +221,39 @@ async def build_worker(settings: Settings, role: WorkerRole) -> WorkerRuntime:
             ),
         )
         runners = (consumer(Destinations.VAD_TASKS, VadTasksConsumer(worker)),)
+
     return WorkerRuntime(resources=stack, runners=runners)
+
+
+async def _load_transcriber(settings: Settings) -> SpeechTranscriber:
+    # Needs the `asr` extra, which only ASR worker images carry.
+    from audio_platform.modules.processing.adapters.whisper_asr import (
+        FasterWhisperTranscriber,
+        WhisperOptions,
+    )
+
+    asr = settings.asr
+    started = time.monotonic()
+    transcriber = await asyncio.to_thread(
+        FasterWhisperTranscriber.load,
+        WhisperOptions(
+            model=asr.model,
+            device=asr.device,
+            compute_type=asr.compute_type,
+            cpu_threads=asr.cpu_threads,
+            download_dir=asr.model_dir,
+            beam_size=asr.beam_size,
+            batch_size=asr.batch_size,
+            language=asr.language,
+            timeout_s=asr.transcription_timeout_s,
+        ),
+    )
+    logger.info(
+        LogEvent.ASR_MODEL_LOADED,
+        model=asr.model,
+        device=asr.device,
+        compute_type=asr.compute_type,
+        seconds=round(time.monotonic() - started, 1),
+    )
+
+    return transcriber

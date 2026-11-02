@@ -1,6 +1,6 @@
 """Interfaces the processing pipeline depends on."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Protocol, Self
@@ -11,6 +11,8 @@ from audio_platform.modules.processing.domain import (
     AudioAnalysis,
     AudioInfo,
     ProcessingJob,
+    SpeechSegment,
+    Transcript,
 )
 
 
@@ -88,7 +90,7 @@ class SpeechProbabilityModel(Protocol):
 
 
 class AnalysisTimedOut(Exception):
-    """The analysis exceeded its time limit and was stopped."""
+    """The analysis or transcription exceeded its time limit and was stopped."""
 
 
 class AudioAnalyzer(Protocol):
@@ -99,5 +101,19 @@ class AudioAnalyzer(Protocol):
         Validate `source`, normalize it into `target` (16 kHz mono WAV) and score
         speech. Raise InvalidAudio for unusable files and AnalysisTimedOut when the
         time limit is exceeded.
+        """
+        ...
+
+
+class SpeechTranscriber(Protocol):
+    """Holds a loaded model: build it once per worker process."""
+
+    async def transcribe(
+        self, wav_path: Path, speech: Sequence[SpeechSegment]
+    ) -> Transcript:
+        """
+        Transcribe only the `speech` segments of a 16 kHz mono WAV; segment times are
+        in the original recording. Raise AnalysisTimedOut when the time limit is
+        exceeded.
         """
         ...

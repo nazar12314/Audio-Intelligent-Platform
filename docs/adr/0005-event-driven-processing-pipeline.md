@@ -60,7 +60,8 @@ Step Functions has no reliable local emulator.
   (`docker compose up --scale vad-worker=N`; ECS service count on AWS).
 - The coordinator is ours to maintain: branching, retries per stage, and timeouts that
   Step Functions would provide come in code as stages are added.
-- A job with speech is `completed` after VAD until transcription exists; the
-  coordinator will request it instead once it does.
+- A job with speech continues to transcription
+  ([ADR 0006](0006-transcription-with-faster-whisper.md)); one without completes after
+  VAD.
 - AWS still needs: SQS queues and DLQs (Terraform), ECS services for the workers, and
   task-role permissions for SQS and the `normalized.wav` / `vad.json` artifacts.

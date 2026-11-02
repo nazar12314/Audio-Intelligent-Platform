@@ -8,6 +8,7 @@ from audio_platform.modules.processing.domain import (
     SpeechSegment,
     StageName,
     StageStatus,
+    Transcript,
 )
 from audio_platform.modules.processing.services import ProcessingView
 
@@ -34,6 +35,31 @@ class VadOut(BaseModel):
     segments: list[SegmentOut]
 
 
+class TranscriptSegmentOut(BaseModel):
+    start_ms: int
+    end_ms: int
+    text: str
+
+
+class TranscriptionOut(BaseModel):
+    language: str
+    language_probability: float
+    text: str
+    segments: list[TranscriptSegmentOut]
+
+    @classmethod
+    def from_domain(cls, transcript: Transcript) -> TranscriptionOut:
+        return cls(
+            language=transcript.language,
+            language_probability=transcript.language_probability,
+            text=transcript.text,
+            segments=[
+                TranscriptSegmentOut(start_ms=s.start_ms, end_ms=s.end_ms, text=s.text)
+                for s in transcript.segments
+            ],
+        )
+
+
 class ProcessingOut(BaseModel):
     job_id: UUID
     recording_id: UUID
@@ -44,6 +70,7 @@ class ProcessingOut(BaseModel):
     completed_at: datetime | None
     stages: list[StageOut]
     vad: VadOut | None
+    transcription: TranscriptionOut | None
 
     @classmethod
     def from_view(cls, view: ProcessingView) -> ProcessingOut:
@@ -78,6 +105,11 @@ class ProcessingOut(BaseModel):
                 for s in job.stages.values()
             ],
             vad=vad,
+            transcription=(
+                TranscriptionOut.from_domain(view.transcript)
+                if view.transcript is not None
+                else None
+            ),
         )
 
 

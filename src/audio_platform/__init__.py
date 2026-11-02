@@ -1,5 +1,3 @@
-"""Audio Intelligence Platform backend."""
-
 from importlib.metadata import PackageNotFoundError, version
 
 try:

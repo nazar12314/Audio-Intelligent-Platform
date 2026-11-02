@@ -13,6 +13,7 @@ class JobStatus(StrEnum):
 
 class StageName(StrEnum):
     VAD = "vad"  # validate, normalize to 16 kHz mono, detect speech
+    ASR = "asr"  # transcribe the speech: segments with timestamps, language
 
 
 class StageStatus(StrEnum):
@@ -108,9 +109,21 @@ class ProcessingJob:
         stage.status, stage.error = StageStatus.FAILED, error
         stage.finished_at = self.updated_at = now
 
-    def complete(self, *, speech_detected: bool, now: datetime) -> None:
+    def add_stage(self, name: StageName, *, now: datetime) -> None:
         self._require_running()
-        self.status, self.speech_detected = JobStatus.COMPLETED, speech_detected
+        if name in self.stages:
+            raise InvalidJobTransition(f"stage {name} already exists")
+        self.stages[name] = Stage(name)
+        self.updated_at = now
+
+    def record_speech(self, detected: bool, *, now: datetime) -> None:
+        self._require_running()
+        self.speech_detected = detected
+        self.updated_at = now
+
+    def complete(self, *, now: datetime) -> None:
+        self._require_running()
+        self.status = JobStatus.COMPLETED
         self.completed_at = self.updated_at = now
 
     def fail(self, reason: str, *, now: datetime) -> None:

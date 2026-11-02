@@ -1,6 +1,7 @@
 """
-Upload → outbox → SQS → coordinator → VAD worker → job status, on real Postgres,
-RustFS and ElasticMQ, with both worker roles running in-process.
+Upload → outbox → SQS → coordinator → VAD worker → ASR worker → job status, on real
+Postgres, RustFS and ElasticMQ, with every worker role running in-process. The ASR
+worker uses the `tiny` Whisper model (downloaded on the first run).
 """
 
 import asyncio
@@ -13,7 +14,7 @@ import httpx
 import pytest
 
 from audio_platform.api import create_app
-from audio_platform.core.config import Settings
+from audio_platform.core.config import AsrSettings, Settings
 from audio_platform.core.container import build_worker
 
 pytestmark = pytest.mark.integration
@@ -24,10 +25,13 @@ USER = {"X-Dev-User-Id": "00000000-0000-7000-8000-0000000000e2"}
 
 @pytest.fixture
 async def workers(settings: Settings) -> AsyncIterator[None]:
+    settings = settings.model_copy(
+        update={"asr": AsrSettings(model="tiny", beam_size=1, cpu_threads=2)}
+    )
     stop = asyncio.Event()
     async with contextlib.AsyncExitStack() as stack:
         tasks = []
-        for role in ("pipeline", "vad"):
+        for role in ("pipeline", "vad", "asr"):
             runtime = await build_worker(settings, role)
             await stack.enter_async_context(runtime.resources)
             tasks += [asyncio.create_task(runner(stop)) for runner in runtime.runners]
@@ -89,16 +93,29 @@ async def _finished_processing(
             await asyncio.sleep(0.2)
 
 
-async def test_speech_is_detected(workers: None, api: httpx.AsyncClient) -> None:
+async def test_speech_is_detected_and_transcribed(
+    workers: None, api: httpx.AsyncClient
+) -> None:
     data = (FIXTURES / "speech_16k_mono.wav").read_bytes()
     recording_id = await _upload(api, data, "speech.wav", "audio/wav")
 
     result = await _finished_processing(api, recording_id)
 
     assert (result["status"], result["speech_detected"]) == ("completed", True)
-    assert result["stages"][0]["status"] == "succeeded"
+    assert [(s["name"], s["status"]) for s in result["stages"]] == [
+        ("vad", "succeeded"),
+        ("asr", "succeeded"),
+    ]
     assert result["vad"]["segments"]
     assert 8900 <= result["vad"]["duration_ms"] <= 9200
+    transcription = result["transcription"]
+    assert transcription["language"] == "en"
+    assert "audio intelligence platform" in transcription["text"].lower()
+    vad_starts = {s["start_ms"] for s in result["vad"]["segments"]}
+    vad_ends = {s["end_ms"] for s in result["vad"]["segments"]}
+    for segment in transcription["segments"]:
+        assert segment["start_ms"] in vad_starts
+        assert segment["end_ms"] in vad_ends
 
 
 async def test_silence_completes_without_speech(
@@ -111,6 +128,8 @@ async def test_silence_completes_without_speech(
 
     assert (result["status"], result["speech_detected"]) == ("completed", False)
     assert result["vad"]["segments"] == []
+    assert [s["name"] for s in result["stages"]] == ["vad"]
+    assert result["transcription"] is None
 
 
 async def test_files_that_are_not_audio_fail(

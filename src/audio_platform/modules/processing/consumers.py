@@ -3,6 +3,7 @@
 from audio_platform.core.logging import get_logger
 from audio_platform.infrastructure.messaging import ReceivedEvent
 from audio_platform.modules.processing.services import (
+    AsrWorker,
     EventTypes,
     PipelineCoordinator,
     VadWorker,
@@ -24,6 +25,10 @@ class PipelineEventsConsumer:
                 await self._coordinator.vad_completed(event.data)
             case EventTypes.VAD_FAILED:
                 await self._coordinator.vad_failed(event.data)
+            case EventTypes.ASR_COMPLETED:
+                await self._coordinator.asr_completed(event.data)
+            case EventTypes.ASR_FAILED:
+                await self._coordinator.asr_failed(event.data)
             case _:
                 logger.warning("messaging.message.ignored", event_type=event.type)
 
@@ -34,6 +39,19 @@ class VadTasksConsumer:
 
     async def __call__(self, received: ReceivedEvent) -> None:
         if received.event.type != EventTypes.VAD_REQUESTED:
+            logger.warning("messaging.message.ignored", event_type=received.event.type)
+            return
+        await self._worker.handle(
+            received.event.data, receive_count=received.receive_count
+        )
+
+
+class AsrTasksConsumer:
+    def __init__(self, worker: AsrWorker) -> None:
+        self._worker = worker
+
+    async def __call__(self, received: ReceivedEvent) -> None:
+        if received.event.type != EventTypes.ASR_REQUESTED:
             logger.warning("messaging.message.ignored", event_type=received.event.type)
             return
         await self._worker.handle(

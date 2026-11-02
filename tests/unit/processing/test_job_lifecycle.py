@@ -58,11 +58,28 @@ def test_finished_stage_cannot_restart() -> None:
 
 def test_finished_job_rejects_changes() -> None:
     job = _job()
-    job.complete(speech_detected=False, now=T0)
+    job.record_speech(False, now=T0)
+    job.complete(now=T0)
 
     with pytest.raises(InvalidJobTransition):
         job.fail("late failure", now=T0)
+    with pytest.raises(InvalidJobTransition):
+        job.add_stage(StageName.ASR, now=T0)
     assert (job.status, job.speech_detected) == (JobStatus.COMPLETED, False)
+
+
+def test_transcription_is_a_stage_added_after_speech_is_found() -> None:
+    job = _job()
+    job.begin_stage(StageName.VAD, now=T0)
+    job.succeed_stage(StageName.VAD, {"speech_detected": True}, now=T0)
+    job.record_speech(True, now=T0)
+    job.add_stage(StageName.ASR, now=T0)
+
+    assert list(job.stages) == [StageName.VAD, StageName.ASR]
+    assert job.stage(StageName.ASR).status is StageStatus.PENDING
+    assert (job.status, job.speech_detected) == (JobStatus.RUNNING, True)
+    with pytest.raises(InvalidJobTransition):
+        job.add_stage(StageName.ASR, now=T0)
 
 
 @pytest.mark.parametrize(

@@ -12,6 +12,16 @@ from audio_platform.modules.processing.domain.job import (
     StageName,
     StageStatus,
 )
+from audio_platform.modules.processing.domain.transcript import (
+    WINDOW_MS,
+    SpeechTimeline,
+    Transcript,
+    TranscriptSegment,
+    Word,
+    speech_windows,
+    transcript_segments,
+    unheard_window_ends,
+)
 from audio_platform.modules.processing.domain.vad import (
     SAMPLE_RATE,
     WINDOW_SAMPLES,
@@ -23,6 +33,7 @@ from audio_platform.modules.processing.domain.vad import (
 
 __all__ = [
     "SAMPLE_RATE",
+    "WINDOW_MS",
     "WINDOW_SAMPLES",
     "AudioAnalysis",
     "AudioInfo",
@@ -31,11 +42,18 @@ __all__ = [
     "JobStatus",
     "ProcessingJob",
     "SpeechSegment",
+    "SpeechTimeline",
     "Stage",
     "StageName",
     "StageStatus",
+    "Transcript",
+    "TranscriptSegment",
     "VadParameters",
     "VadResult",
+    "Word",
     "speech_segments",
+    "speech_windows",
+    "transcript_segments",
+    "unheard_window_ends",
     "validate_audio",
 ]

@@ -6,7 +6,7 @@ information extraction), and querying them in natural language.
 | Stage | Scope | Status |
 |---|---|---|
 | 1. Audio ingestion | Users upload recordings via S3 multipart upload; metadata is registered in PostgreSQL | **implemented** (auth is a dev stub, [ADR 0004](docs/adr/0004-auth-port-with-dev-stub.md)) |
-| 2. Audio processing | Preprocessing, transcription, speaker diarization, information extraction | **VAD implemented** (validation, normalization, Silero VAD; [ADR 0005](docs/adr/0005-event-driven-processing-pipeline.md)) |
+| 2. Audio processing | Preprocessing, transcription, speaker diarization, information extraction | **VAD and transcription implemented** (validation, normalization, Silero VAD, Faster-Whisper; [ADR 0005](docs/adr/0005-event-driven-processing-pipeline.md), [ADR 0006](docs/adr/0006-transcription-with-faster-whisper.md)) |
 | 3. Agentic interaction | Natural-language search, summaries, audio clip generation | planned |
 
 ## Architecture
@@ -19,8 +19,10 @@ information extraction), and querying them in natural language.
   [API.md](API.md).
 - **Processing pipeline.** Event-driven: an uploaded recording emits an event (via a
   transactional outbox) to SQS; a coordinator creates a job and queues a VAD task; VAD
-  workers validate, normalize and detect speech, then report back. Workers scale
-  horizontally. See [ADR 0005](docs/adr/0005-event-driven-processing-pipeline.md).
+  workers validate, normalize and detect speech, then report back. When there is speech,
+  the coordinator queues a transcription task for ASR workers (Faster-Whisper). Workers
+  scale horizontally. See [ADR 0005](docs/adr/0005-event-driven-processing-pipeline.md)
+  and [ADR 0006](docs/adr/0006-transcription-with-faster-whisper.md).
 - **Infrastructure.** PostgreSQL 18 (system of record) and S3 (audio objects). Locally, S3
   is provided by RustFS ([ADR 0002](docs/adr/0002-local-s3-emulator-rustfs.md)). AWS
   resources are managed with Terraform in [`infra/`](infra/README.md)
@@ -30,7 +32,7 @@ information extraction), and querying them in natural language.
 
 ```
 src/audio_platform/
-├── entrypoints/              # `audio-platform-api`, `audio-platform-worker {pipeline,vad}`
+├── entrypoints/              # `audio-platform-api`, `audio-platform-worker {pipeline,vad,asr}`
 ├── api/                      # app factory, middleware (request ID, CORS), error envelope, health
 ├── core/                     # settings, container, errors, logging, readiness checks
 ├── infrastructure/
@@ -38,7 +40,7 @@ src/audio_platform/
 │   └── storage/              # S3 client (aioboto3)
 ├── modules/
 │   ├── recordings/           # Stage 1: upload lifecycle (domain, service, Postgres + S3 adapters, API)
-│   └── processing/           # Stage 2: jobs, coordinator, VAD worker (PyAV, Silero ONNX)
+│   └── processing/           # Stage 2: jobs, coordinator, VAD (PyAV, Silero ONNX), ASR (Faster-Whisper)
 └── shared/                   # pure helpers
 ```
 
@@ -70,6 +72,12 @@ make up
 curl localhost:8000/health/ready
 ```
 
+### Frontend
+
+A small React app for uploading recordings and reviewing their waveforms and transcripts:
+`make fe-install` once, then `make fe-dev` and open http://localhost:5173 (needs the API on
+port 8000). See [frontend/README.md](frontend/README.md).
+
 ### Against real S3 (dev environment on AWS)
 
 After `infra/` is applied ([infra/README.md](infra/README.md)), run the API on the host with
@@ -80,9 +88,11 @@ local Postgres and the real recordings bucket:
    blank.
 3. Run `make aws-login`, `make infra-up`, then `make run`.
 
-`make up` also starts the processing workers. Run more VAD workers with
-`docker compose up -d --scale vad-worker=3`. Queues and their DLQs are visible in the
-ElasticMQ UI at http://localhost:9325.
+`make up` also starts the processing workers. Run more VAD or ASR workers with
+`docker compose up -d --scale vad-worker=3 --scale asr-worker=2`. Queues and their DLQs
+are visible in the ElasticMQ UI at http://localhost:9325. The first ASR worker start
+downloads the Whisper model (`AUDIO_ASR__MODEL`, `medium` by default, ~1.5 GB) into the
+`asr_models` volume; later starts load it from there.
 
 RustFS console: http://localhost:9001 (`rustfs-dev` / `rustfs-dev-secret`). If a default
 port is taken, override `APP_HOST_PORT`, `POSTGRES_HOST_PORT`, `S3_HOST_PORT` or
@@ -99,6 +109,8 @@ All settings are read by `core/config.py` from environment variables named
 | `AUDIO_STORAGE__*` | Recordings bucket | `BUCKET` |
 | `AUDIO_AWS__*` | Region, local endpoint override, S3 client timeouts and retries | — |
 | `AUDIO_API__*` | Bind address, CORS origins, docs toggle | — |
+| `AUDIO_MESSAGING__*` / `AUDIO_PROCESSING__*` | Queues, retries, time limits, VAD parameters | — |
+| `AUDIO_ASR__*` | Whisper model, device, precision, threads, beam and batch size, language, time limit | — |
 
 AWS credentials are never app settings. The SDK's default credential chain reads them:
 `AWS_*` env vars locally, the task role on AWS. The app refuses to start, with exit code 2
@@ -120,13 +132,14 @@ and one line per field, when a required setting is missing or invalid.
 | `migrate` | `alembic upgrade head` against the DB in `.env` |
 | `migration m="…"` | Autogenerate `migrations/versions/<timestamp>_<rev>_<slug>.py` |
 | `migrations-check` | Fail unless migrations have exactly one head (run in CI) |
-| `worker-pipeline` / `worker-vad` | Run the pipeline coordinator / a VAD worker on the host |
+| `worker-pipeline` / `worker-vad` / `worker-asr` | Run the pipeline coordinator / a VAD worker / an ASR worker on the host |
 | `db-shell` / `db-stats` | `psql` on the local database / overview of migrations, recordings, tables, connections |
 | `infra-up` / `up` / `down` / `logs` | Docker Compose lifecycle |
 | `aws-login` | SSO login to AWS (profile `audio-platform-dev`) |
 | `tf-bootstrap` / `tf-init` / `tf-plan` / `tf-apply` | Terraform for the dev environment ([infra/README.md](infra/README.md)) |
 | `tf-app-env` | Print app `.env` lines and AWS profile from Terraform outputs |
 | `tf-fmt` / `tf-lint` | Format / fmt check, validate, tflint, checkov |
+| `fe-install` / `fe-dev` / `fe-check` | Frontend deps, dev server, lint + tests + build |
 
 ## Testing
 
