@@ -40,10 +40,12 @@ class LogEvent(StrEnum):
     PROCESSING_JOB_CREATED = "processing.job.created"
     PROCESSING_JOB_COMPLETED = "processing.job.completed"
     PROCESSING_JOB_FAILED = "processing.job.failed"
-    VAD_STARTED = "processing.vad.started"
-    VAD_COMPLETED = "processing.vad.completed"
-    VAD_FAILED = "processing.vad.failed"
-    VAD_RETRY_SCHEDULED = "processing.vad.retry_scheduled"
+    PROCESSING_STAGE_REQUESTED = "processing.stage.requested"
+    STAGE_STARTED = "processing.stage.started"
+    STAGE_COMPLETED = "processing.stage.completed"
+    STAGE_FAILED = "processing.stage.failed"
+    STAGE_RETRY_SCHEDULED = "processing.stage.retry_scheduled"
+    ASR_MODEL_LOADED = "processing.asr.model_loaded"
 
 
 _SENSITIVE_KEY = re.compile(
@@ -132,6 +134,9 @@ def configure_logging(settings: Settings) -> None:
         logging.getLogger(name).propagate = True
 
     logging.getLogger("uvicorn.access").disabled = True
+    # One line per HTTP request while the Hugging Face hub checks or downloads a model.
+    for name in ("httpx", "httpx2"):
+        logging.getLogger(name).setLevel(max(root.level, logging.WARNING))
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:

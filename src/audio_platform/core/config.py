@@ -83,6 +83,7 @@ class MessagingSettings(BaseModel):
     endpoint_url: str | None = None  # SQS-compatible endpoint (ElasticMQ); empty on AWS
     pipeline_events_queue: str = "audio-platform-dev-pipeline-events"
     vad_tasks_queue: str = "audio-platform-dev-vad-tasks"
+    asr_tasks_queue: str = "audio-platform-dev-asr-tasks"
     wait_time_s: int = Field(default=20, ge=0, le=20)
     # Workers extend this lease while busy, so it only bounds crash recovery time.
     visibility_timeout_s: int = Field(default=60, ge=10, le=43_200)
@@ -108,6 +109,27 @@ class ProcessingSettings(BaseModel):
     vad_speech_pad_ms: int = Field(default=30, ge=0)
 
 
+class AsrSettings(BaseModel):
+    # Faster-Whisper model: a size ("tiny" .. "large-v3", "distil-large-v3") or the
+    # path of a converted CTranslate2 model. English-only ".en" models skip
+    # language detection.
+    model: str = Field(default="medium", min_length=1)
+    device: Literal["cpu", "cuda", "auto"] = "cpu"
+    compute_type: Literal[
+        "default", "auto", "int8", "int8_float32", "int8_float16", "float16", "float32"
+    ] = "int8"
+    cpu_threads: int = Field(default=4, ge=0)  # per process; 0: CTranslate2 default
+    # Downloaded models are cached here; empty: the Hugging Face cache.
+    model_dir: str | None = None
+    beam_size: int = Field(default=5, ge=1, le=10)
+    # 20 s speech windows decoded together; more is faster and needs more memory.
+    batch_size: int = Field(default=8, ge=1, le=64)
+    # ISO 639-1 code ("en", "uk") to skip detection; empty: detect per recording.
+    language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}$")
+    # Checked between decoded batches; the attempt then fails and is retried.
+    transcription_timeout_s: int = Field(default=3000, ge=1)
+
+
 class AuthSettings(BaseModel):
     mode: Literal["dev_header"] = "dev_header"
 
@@ -127,6 +149,7 @@ class Settings(BaseSettings):
     auth: AuthSettings = AuthSettings()
     messaging: MessagingSettings = MessagingSettings()
     processing: ProcessingSettings = ProcessingSettings()
+    asr: AsrSettings = AsrSettings()
 
     model_config = SettingsConfigDict(
         env_prefix="AUDIO_",
@@ -141,6 +164,10 @@ class Settings(BaseSettings):
         if self.messaging.handler_timeout_s <= self.processing.analysis_timeout_s:
             raise ValueError(
                 "messaging.handler_timeout_s must exceed processing.analysis_timeout_s"
+            )
+        if self.messaging.handler_timeout_s <= self.asr.transcription_timeout_s:
+            raise ValueError(
+                "messaging.handler_timeout_s must exceed asr.transcription_timeout_s"
             )
         return self
 

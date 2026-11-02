@@ -54,11 +54,20 @@ After a successful `complete`, the recording is processed asynchronously.
 is usually within a second or two):
 
 - `status`: `running`, `completed` or `failed` (with `failure_reason`).
-- `speech_detected`: set when VAD has finished.
-- `stages`: per stage `status` (`pending`, `running`, `succeeded`, `failed`), `attempts`
-  and the last `error`.
+- `speech_detected`: set when VAD has finished. A job with speech stays `running` until
+  it is transcribed; one without speech completes after VAD.
+- `stages`: in pipeline order (`vad`, then `asr` when there is speech), per stage
+  `status` (`pending`, `running`, `succeeded`, `failed`), `attempts` and the last `error`.
 - `vad`: once VAD succeeded, `duration_ms`, `speech_ms`, `speech_ratio` and `segments`
   (`[{start_ms, end_ms}]`, times in the original recording).
+- `transcription`: once ASR succeeded, `language` (ISO 639-1, e.g. `en`),
+  `language_probability`, the full `text` and `segments` (`[{start_ms, end_ms, text}]`,
+  times in the original recording). Each segment is one or more consecutive `vad`
+  segments holding whole sentences: VAD segments are joined while a sentence runs on
+  across a pause of at most 1.5 s. A segment starts where its first VAD segment starts
+  and ends where its last one ends, and together they cover every VAD segment. One
+  where no words were recognized (breaths, noise, text dropped as a likely
+  hallucination) has empty `text`.
 
 ## Listing and downloading
 
@@ -99,3 +108,6 @@ deduplicate by checking recorded state, because delivery is at least once.
 | `processing.vad.requested` | coordinator → VAD workers | vad-tasks | `job_id` |
 | `processing.vad.completed` | VAD worker → coordinator | pipeline-events | `job_id`, `speech_detected` |
 | `processing.vad.failed` | VAD worker → coordinator | pipeline-events | `job_id`, `error` |
+| `processing.asr.requested` | coordinator → ASR workers | asr-tasks | `job_id` |
+| `processing.asr.completed` | ASR worker → coordinator | pipeline-events | `job_id`, `language` |
+| `processing.asr.failed` | ASR worker → coordinator | pipeline-events | `job_id`, `error` |

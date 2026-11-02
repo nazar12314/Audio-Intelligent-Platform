@@ -8,6 +8,8 @@ from audio_platform.modules.processing.domain import (
     SpeechSegment,
     StageName,
     StageStatus,
+    Transcript,
+    TranscriptSegment,
 )
 from audio_platform.modules.processing.ports import (
     ArtifactStorage,
@@ -19,6 +21,7 @@ from audio_platform.modules.processing.ports import (
 class ProcessingView:
     job: ProcessingJob
     segments: list[SpeechSegment] | None  # None until VAD has succeeded
+    transcript: Transcript | None = None  # None until ASR has succeeded
 
 
 class ProcessingQueries:
@@ -35,16 +38,35 @@ class ProcessingQueries:
         if job is None:
             raise NotFoundError("processing job for recording", recording_id)
 
-        vad = job.stage(StageName.VAD)
         segments = None
+        document = await self._artifact(job, StageName.VAD, "segments_key")
+        if document is not None:
+            segments = [
+                SpeechSegment(s["start_ms"], s["end_ms"]) for s in document["segments"]
+            ]
 
-        if vad.status is StageStatus.SUCCEEDED and vad.result:
-            document: dict[str, Any] | None = await self._storage.get_json(
-                vad.result["segments_key"]
-            )
-            if document is not None:
-                segments = [
-                    SpeechSegment(s["start_ms"], s["end_ms"])
+        transcript = None
+        document = await self._artifact(job, StageName.ASR, "transcript_key")
+        if document is not None:
+            transcript = Transcript(
+                language=document["language"],
+                language_probability=document["language_probability"],
+                segments=[
+                    TranscriptSegment(s["start_ms"], s["end_ms"], s["text"])
                     for s in document["segments"]
-                ]
-        return ProcessingView(job=job, segments=segments)
+                ],
+            )
+        return ProcessingView(job=job, segments=segments, transcript=transcript)
+
+    async def _artifact(
+        self, job: ProcessingJob, stage_name: StageName, key: str
+    ) -> dict[str, Any] | None:
+        stage = job.stages.get(stage_name)
+        if stage is None or stage.status is not StageStatus.SUCCEEDED:
+            return None
+        if stage.result is None:
+            return None
+        document: dict[str, Any] | None = await self._storage.get_json(
+            stage.result[key]
+        )
+        return document

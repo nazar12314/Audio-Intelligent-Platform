@@ -19,6 +19,8 @@ dependencies = [
 [project.optional-dependencies]
 # Audio processing workers only; the API image is built without them.
 processing = ["av>=19.0.2", "onnxruntime>=1.31.1", "numpy>=2.5.4"]
+# Transcription workers only (Faster-Whisper on CTranslate2).
+asr = ["faster-whisper>=1.2.1", "numpy>=2.5.4"]
 
 [project.scripts]
 audio-platform-api = "audio_platform.entrypoints.api:main"
@@ -66,6 +68,8 @@ ignore = ["B008"] # FastAPI Depends() in argument defaults
 "botocore".msg = "object storage only: use it in adapters/ or infrastructure/"
 "av".msg = "audio decoding only: use it in adapters/"
 "onnxruntime".msg = "model inference only: use it in adapters/"
+"faster_whisper".msg = "model inference only: use the SpeechTranscriber port"
+"ctranslate2".msg = "model inference only: use the SpeechTranscriber port"
 
 [tool.ruff.lint.per-file-ignores]
 "src/audio_platform/api/**" = ["TID251"]
@@ -96,7 +100,7 @@ module = "tests.*"
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*", "boto3.*", "onnxruntime.*"]
+module = ["testcontainers.*", "boto3.*", "onnxruntime.*", "faster_whisper.*"]
 ignore_missing_imports = true
 
 

@@ -2,7 +2,7 @@ import copy
 import json
 import uuid
 import wave
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -13,6 +13,10 @@ from audio_platform.modules.processing.domain import (
     AudioInfo,
     InvalidAudio,
     ProcessingJob,
+    SpeechSegment,
+    Transcript,
+    TranscriptSegment,
+    Word,
 )
 from tests.fakes.recordings import InMemoryOutbox
 
@@ -151,3 +155,33 @@ class FakeSpeechModel:
 
     def probabilities(self, wav_path: Path) -> list[float]:
         return list(self._probabilities)
+
+
+class FakeTranscriber:
+    """Says "segment <n>" over each speech segment it is given."""
+
+    def __init__(self, language: str = "en") -> None:
+        self.language = language
+        self.calls: list[list[SpeechSegment]] = []
+        self.error: Exception | None = None
+
+    async def transcribe(
+        self, wav_path: Path, speech: Sequence[SpeechSegment]
+    ) -> Transcript:
+        assert wav_path.read_bytes(), "the normalized audio was not downloaded"
+        self.calls.append(list(speech))
+        if self.error is not None:
+            raise self.error
+        return Transcript(
+            language=self.language,
+            language_probability=0.97,
+            segments=[
+                TranscriptSegment(
+                    s.start_ms,
+                    s.end_ms,
+                    f"segment {i}",
+                    [Word(s.start_ms, s.end_ms, f" segment {i}", 0.9)],
+                )
+                for i, s in enumerate(speech, 1)
+            ],
+        )

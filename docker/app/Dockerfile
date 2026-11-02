@@ -23,7 +23,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-RUN useradd --create-home --uid 10001 app
+# The Hugging Face cache exists up front so a volume mounted there is app-owned.
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /home/app/.cache/huggingface && chown -R app:app /home/app/.cache
 COPY --from=builder --chown=app /app/.venv ./.venv
 COPY --from=builder --chown=app /app/src ./src
 COPY --chown=app alembic.ini ./

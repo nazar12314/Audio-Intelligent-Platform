@@ -51,3 +51,4 @@ class Destinations:
 
     PIPELINE_EVENTS = "pipeline-events"
     VAD_TASKS = "vad-tasks"
+    ASR_TASKS = "asr-tasks"

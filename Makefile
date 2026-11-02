@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help setup install env hooks run lint format typecheck test test-integration cov \
-        migrate migration migrations-check worker-pipeline worker-vad infra-up up down logs clean \
+        migrate migration migrations-check worker-pipeline worker-vad worker-asr infra-up up down logs clean \
         aws-login tf-bootstrap tf-init tf-plan tf-apply tf-app-env tf-fmt tf-lint \
         db-shell db-stats
 
@@ -30,6 +30,9 @@ worker-pipeline:  ## Run the outbox relay + pipeline coordinator on the host
 
 worker-vad:       ## Run a VAD worker on the host (start more for parallelism)
 	poetry run audio-platform-worker vad
+
+worker-asr:       ## Run an ASR worker on the host (downloads the model on first start)
+	poetry run audio-platform-worker asr
 
 lint:             ## Check lint + format (no changes)
 	@echo "→ ruff check + format check"

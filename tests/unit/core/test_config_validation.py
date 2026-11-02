@@ -90,3 +90,17 @@ def test_message_handling_must_outlive_the_analysis_limit() -> None:
         make_settings(
             messaging={"handler_timeout_s": 600}, processing={"analysis_timeout_s": 600}
         )
+
+
+def test_message_handling_must_outlive_the_transcription_limit() -> None:
+    with pytest.raises(ValidationError, match=r"asr\.transcription_timeout_s"):
+        make_settings(
+            messaging={"handler_timeout_s": 3600},
+            asr={"transcription_timeout_s": 3600},
+        )
+
+
+def test_forced_asr_language_must_be_a_language_code() -> None:
+    with pytest.raises(ValidationError, match=r"asr\.language"):
+        make_settings(asr={"language": "English"})
+    assert make_settings(asr={"language": "uk"}).asr.language == "uk"

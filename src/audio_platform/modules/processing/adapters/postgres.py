@@ -75,9 +75,13 @@ class ProcessingStageRow(Base):
     )
 
 
+_STAGE_ORDER = {name: index for index, name in enumerate(StageName)}
+
+
 def _to_domain(
     row: ProcessingJobRow, stages: list[ProcessingStageRow]
 ) -> ProcessingJob:
+    stages = sorted(stages, key=lambda s: _STAGE_ORDER[StageName(s.name)])
     return ProcessingJob(
         id=row.id,
         recording_id=row.recording_id,

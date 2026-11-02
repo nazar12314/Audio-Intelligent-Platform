@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from audio_platform.modules.processing.domain import JobStatus
+from audio_platform.modules.processing.domain import JobStatus, StageName, StageStatus
 from audio_platform.modules.processing.services import EventTypes, PipelineCoordinator
 from tests.fakes.processing import InMemoryProcessingStore
 
@@ -53,19 +53,63 @@ async def test_a_redelivered_upload_event_starts_nothing_new(
     assert len(processing_store.outbox) == 1
 
 
-@pytest.mark.parametrize("speech", [True, False])
-async def test_vad_completion_completes_the_job(
-    coordinator: PipelineCoordinator,
-    processing_store: InMemoryProcessingStore,
-    speech: bool,
+async def test_silence_completes_the_job_after_vad(
+    coordinator: PipelineCoordinator, processing_store: InMemoryProcessingStore
 ) -> None:
     job_id = await _start(coordinator, processing_store)
 
-    await coordinator.vad_completed({"job_id": job_id, "speech_detected": speech})
-    await coordinator.vad_completed({"job_id": job_id, "speech_detected": not speech})
+    await coordinator.vad_completed({"job_id": job_id, "speech_detected": False})
+    await coordinator.vad_completed({"job_id": job_id, "speech_detected": True})
 
     job = processing_store.jobs[uuid.UUID(job_id)]
-    assert (job.status, job.speech_detected) == (JobStatus.COMPLETED, speech)
+    assert (job.status, job.speech_detected) == (JobStatus.COMPLETED, False)
+    assert list(job.stages) == [StageName.VAD]
+    assert processing_store.events(EventTypes.ASR_REQUESTED) == []
+
+
+async def test_speech_requests_transcription_once(
+    coordinator: PipelineCoordinator, processing_store: InMemoryProcessingStore
+) -> None:
+    job_id = await _start(coordinator, processing_store)
+
+    await coordinator.vad_completed({"job_id": job_id, "speech_detected": True})
+    await coordinator.vad_completed({"job_id": job_id, "speech_detected": True})
+
+    job = processing_store.jobs[uuid.UUID(job_id)]
+    assert (job.status, job.speech_detected) == (JobStatus.RUNNING, True)
+    assert job.stage(StageName.ASR).status is StageStatus.PENDING
+    destination, event = processing_store.outbox[-1]
+    assert (destination, event.type, event.data) == (
+        "asr-tasks",
+        EventTypes.ASR_REQUESTED,
+        {"job_id": job_id},
+    )
+    assert len(processing_store.events(EventTypes.ASR_REQUESTED)) == 1
+
+
+async def test_transcription_completes_the_job(
+    coordinator: PipelineCoordinator, processing_store: InMemoryProcessingStore
+) -> None:
+    job_id = await _start(coordinator, processing_store)
+    await coordinator.vad_completed({"job_id": job_id, "speech_detected": True})
+
+    await coordinator.asr_completed({"job_id": job_id, "language": "en"})
+    await coordinator.asr_failed({"job_id": job_id, "error": "late duplicate"})
+
+    job = processing_store.jobs[uuid.UUID(job_id)]
+    assert (job.status, job.speech_detected) == (JobStatus.COMPLETED, True)
+
+
+async def test_transcription_failure_fails_the_job(
+    coordinator: PipelineCoordinator, processing_store: InMemoryProcessingStore
+) -> None:
+    job_id = await _start(coordinator, processing_store)
+    await coordinator.vad_completed({"job_id": job_id, "speech_detected": True})
+
+    await coordinator.asr_failed({"job_id": job_id, "error": "gave up"})
+
+    job = processing_store.jobs[uuid.UUID(job_id)]
+    assert (job.status, job.failure_reason) == (JobStatus.FAILED, "asr: gave up")
 
 
 async def test_vad_failure_fails_the_job(
@@ -89,3 +133,5 @@ async def test_events_for_unknown_jobs_are_ignored(
         {"job_id": str(uuid.uuid7()), "speech_detected": True}
     )
     await coordinator.vad_failed({"job_id": str(uuid.uuid7()), "error": "x"})
+    await coordinator.asr_completed({"job_id": str(uuid.uuid7()), "language": "en"})
+    await coordinator.asr_failed({"job_id": str(uuid.uuid7()), "error": "x"})
