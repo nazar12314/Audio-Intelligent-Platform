@@ -72,6 +72,12 @@ make up
 curl localhost:8000/health/ready
 ```
 
+### Frontend
+
+A small React app for uploading recordings and reviewing their waveforms and transcripts:
+`make fe-install` once, then `make fe-dev` and open http://localhost:5173 (needs the API on
+port 8000). See [frontend/README.md](frontend/README.md).
+
 ### Against real S3 (dev environment on AWS)
 
 After `infra/` is applied ([infra/README.md](infra/README.md)), run the API on the host with
@@ -133,6 +139,7 @@ and one line per field, when a required setting is missing or invalid.
 | `tf-bootstrap` / `tf-init` / `tf-plan` / `tf-apply` | Terraform for the dev environment ([infra/README.md](infra/README.md)) |
 | `tf-app-env` | Print app `.env` lines and AWS profile from Terraform outputs |
 | `tf-fmt` / `tf-lint` | Format / fmt check, validate, tflint, checkov |
+| `fe-install` / `fe-dev` / `fe-check` | Frontend deps, dev server, lint + tests + build |
 
 ## Testing
 

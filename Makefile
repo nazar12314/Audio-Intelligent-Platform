@@ -2,7 +2,7 @@
 .PHONY: help setup install env hooks run lint format typecheck test test-integration cov \
         migrate migration migrations-check worker-pipeline worker-vad worker-asr infra-up up down logs clean \
         aws-login tf-bootstrap tf-init tf-plan tf-apply tf-app-env tf-fmt tf-lint \
-        db-shell db-stats
+        fe-install fe-dev fe-check db-shell db-stats
 
 help:             ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-18s %s\n",$$1,$$2}'
@@ -153,3 +153,15 @@ tf-lint:          ## Terraform fmt check, validate, tflint, checkov (no AWS acce
 		-c 'tflint --init >/dev/null && tflint --recursive --config /data/.tflint.hcl'
 	@echo "→ checkov"
 	docker run --rm -v $(CURDIR)/infra:/tf $(CHECKOV_IMAGE) -d /tf --framework terraform --compact --quiet --skip-path .terraform
+
+# ── Frontend (React + Vite) ──────────────────────────────────────────────────
+fe-install:       ## Install frontend deps from package-lock.json
+	@echo "→ npm ci (frontend)"
+	cd frontend && npm ci
+
+fe-dev:           ## Run the frontend on http://localhost:5173 (proxies /api to :8000)
+	cd frontend && npm run dev
+
+fe-check:         ## Frontend lint, unit tests and production build
+	@echo "→ frontend lint + test + build"
+	cd frontend && npm run lint && npm test && npm run build
